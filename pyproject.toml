@@ -1,0 +1,48 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "unified-finance-mcp"
+version = "0.1.0"
+description = "Unified finance & business MCP server: Yahoo, TradingView, FMP, Alpha Vantage, marketaux and Futu OpenD behind one tool surface."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "eli" }]
+keywords = ["mcp", "finance", "stocks", "yfinance", "tradingview", "fmp", "alpha-vantage", "futu"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+]
+dependencies = [
+  # Pinned <2: mcp 2.x removed mcp.server.fastmcp (FastMCP -> MCPServer);
+  # this server targets the 1.x FastMCP API used throughout the plan.
+  "mcp[cli]>=1.27,<2",
+  "httpx>=0.27",
+  "yfinance>=0.2.40",
+  "tradingview-ta>=3.3",
+  "tradingview-screener>=3.0",
+  "futu-opend-mcp>=0.1.2",
+  "pandas>=2",
+  "uvicorn[standard]>=0.30",
+  "starlette>=0.37",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.5", "respx>=0.22"]
+
+[project.scripts]
+unified-finance-mcp = "unified_finance_mcp.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/unified_finance_mcp"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = ["integration: needs live APIs or a live OpenD gateway"]
+
+[tool.ruff]
+line-length = 100
