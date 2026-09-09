@@ -101,9 +101,9 @@ async def test_tv_scan_top_gainers_egx_end_to_end(monkeypatch):
     assert "EGX:COMI" in captured["symbols"]  # vendored symbols flowed in
     assert len(captured["symbols"]) == 253  # full egx.txt universe, batched
     assert all(r["symbol"].startswith("EGX:") for r in out["data"])
-    # NOTE: _screener_for(exchange) resolves via the provider's
-    # EXCHANGE_TO_TV_SCREENER; its slug value is not part of this test's
-    # contract (pre-existing behavior, flagged in the R2 report).
+    # R2.5: _screener_for now resolves via the exchange-name map; the egx scan
+    # must reach get_multiple_analysis with the "egypt" market slug.
+    assert captured["screener"] == "egypt"
 
 
 class FakeEndToEndQuery:

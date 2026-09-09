@@ -35,8 +35,10 @@ def _symbols_for(exchange: str) -> list[str]:
 
 
 def _screener_for(exchange: str) -> str:
-    from ..providers.tradingview import EXCHANGE_TO_TV_SCREENER
-    return EXCHANGE_TO_TV_SCREENER.get(exchange, exchange.lower())
+    """Screener market slug for an exchange NAME (reference get_market_type:
+    EXCHANGE_SCREENER.get(exchange, "crypto")). Keys are lowercase exchange
+    names; unknown venues fall back to "crypto"."""
+    return EXCHANGE_NAME_TO_TV_MARKET.get(exchange.strip().lower(), "crypto")
 
 
 _CODE_BY_PROJECT_INTERVAL = {"1m": "1", "5m": "5", "15m": "15", "1h": "60",
@@ -505,11 +507,14 @@ def _is_stock_exchange(exchange: str) -> bool:
 def _resolve_screener_for_symbol(full_symbol: str, exchange: str) -> str:
     """Screener market following the RESOLVED symbol's venue, not the caller's
     exchange guess (XAUUSD -> TVC:GOLD -> "cfd", EURUSD -> FX_IDC -> "forex").
+
+    Resolution order (reference resolve_screener_for_symbol): the
+    exchange-name market map first, then the TA-only screeners kept for
+    resolved-symbol prefixes (forex/cfd), then "crypto".
     """
-    from ..providers.tradingview import EXCHANGE_TO_TV_SCREENER
     prefix = (full_symbol.split(":", 1)[0] if ":" in full_symbol
               else (exchange or "")).strip().lower()
-    return (EXCHANGE_TO_TV_SCREENER.get(prefix)
+    return (EXCHANGE_NAME_TO_TV_MARKET.get(prefix)
             or _TA_ONLY_SCREENERS.get(prefix) or "crypto")
 
 
