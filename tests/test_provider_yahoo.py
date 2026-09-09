@@ -33,6 +33,42 @@ async def test_quote_accepts_snake_case_fast_info(monkeypatch):
     assert q["symbol"] == "0700.HK" and q["price"] == 12.25 and q["market_cap"] == 5_000
 
 
+class FakeFastInfo:
+    """Mimics yfinance FastInfo: lazy per-key fetch via .get(), camelCase key space.
+
+    dict(FastInfo) would fetch once per key; we assert quote() goes through .get()
+    inside the worker thread instead.
+    """
+
+    def __init__(self, values):
+        self._values = values
+        self.get_calls = []
+
+    def keys(self):
+        return list(self._values)
+
+    def get(self, key, default=None):
+        self.get_calls.append(key)
+        return self._values.get(key, default)
+
+    def __iter__(self):
+        raise AssertionError("FastInfo must not be iterated (blocking fetch per key)")
+
+    def __getitem__(self, key):
+        raise AssertionError("FastInfo must not be indexed on the event loop")
+
+
+async def test_quote_reads_fastinfo_object_via_get(monkeypatch):
+    fi = FakeFastInfo({"last_price": 123.45, "market_cap": 999, "currency": "USD"})
+    t = MagicMock()
+    type(t).fast_info = property(lambda s: fi)
+    p = make_provider(monkeypatch, t)
+    q = await p.quote(parse_symbol("AAPL"))
+    assert q["price"] == 123.45 and q["market_cap"] == 999 and q["currency"] == "USD"
+    # proves the object's .get() path was used, not dict(...)
+    assert "last_price" in fi.get_calls and "lastPrice" in fi.get_calls
+
+
 async def test_history_rows(monkeypatch):
     import pandas as pd
     t = MagicMock()

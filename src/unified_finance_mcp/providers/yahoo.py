@@ -32,7 +32,11 @@ class YahooProvider(Provider):
 
     async def quote(self, parsed: ParsedSymbol) -> dict:
         t = await self._ticker(parsed)
-        info = dict(await self._run(lambda: t.fast_info))
+        # Read every key inside the worker thread: FastInfo fetches lazily per key, so
+        # iterating/indexing it on the event loop would block. FastInfo.get() exposes
+        # camelCase keys; snake_case is read too for dict-shaped / older yfinance results.
+        keys = ("lastPrice", "last_price", "currency", "marketCap", "market_cap")
+        info = await self._run(lambda: {k: t.fast_info.get(k) for k in keys})
         return {"symbol": parsed.yahoo(),
                 "price": info.get("lastPrice") or info.get("last_price"),
                 "currency": info.get("currency"),
