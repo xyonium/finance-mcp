@@ -5,10 +5,12 @@ open a real socket. `import futu_opend_mcp.tools` at module import is the
 registration side effect that fills the package's own FastMCP singleton.
 """
 
+import logging
 import time
 
 import futu_opend_mcp.tools  # noqa: F401 - registration side effect
 import pytest
+from futu_opend_mcp import connection, skill_runner
 from mcp.server.fastmcp import FastMCP
 
 from unified_finance_mcp.config import get_settings
@@ -44,6 +46,19 @@ def test_mount_skips_conflicts():
     assert other == []  # repeat mount adds nothing new
     tool_names = {t.name for t in mcp._tool_manager.list_tools()}
     assert len(tool_names) == 53  # 1 mine + 52 futu: idempotent, no duplicates
+
+
+def test_mount_skips_conflicts_logs_warning(caplog):
+    mcp = FastMCP("test")
+
+    @mcp.tool(name="get_snapshot")
+    def mine() -> dict:
+        return {"mine": True}
+
+    with caplog.at_level(logging.WARNING, logger="unified_finance_mcp.providers.futu_bridge"):
+        futu_bridge.mount_futu_tools(mcp)
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert any("get_snapshot" in r.message for r in warnings)  # M2: warn logged
 
 
 def test_mount_noop_when_futu_tools_absent(monkeypatch):
@@ -175,3 +190,42 @@ async def test_history_skill_error_raises_provider_error(monkeypatch):
     with pytest.raises(ProviderError) as ei:
         await p.history(parse_symbol("HK.00700"))
     assert "quota" in str(ei.value)
+
+
+def test_run_skill_patches_common_first(monkeypatch):
+    order = []
+
+    def fake_get_context():
+        order.append("context")
+        return object()
+
+    def fake_run_skill_json(fn, *args, **kwargs):
+        order.append("skill")
+        assert getattr(fn, "_skill_target", None) == ("quote", "get_snapshot")
+        return {"data": []}
+
+    monkeypatch.setattr(connection, "get_context", fake_get_context)
+    monkeypatch.setattr(skill_runner, "_run_skill_json", fake_run_skill_json)
+    result = futu_bridge._run_skill("quote", "get_snapshot", ["HK.00700"])
+    assert result == {"data": []}
+    assert order == ["context", "skill"]  # common patched before the skill runs
+
+
+def test_run_skill_api_error_becomes_skill_error(monkeypatch):
+    def fake_get_context():
+        raise connection.ApiError("unreachable")
+
+    monkeypatch.setattr(connection, "get_context", fake_get_context)
+    result = futu_bridge._run_skill("quote", "get_snapshot", ["HK.00700"])
+    assert result == {"_skill_error": True, "error": "unreachable"}
+
+
+async def test_quote_surfaces_api_error_as_provider_error(monkeypatch):
+    def fake_get_context():
+        raise connection.ApiError("unreachable")
+
+    monkeypatch.setattr(connection, "get_context", fake_get_context)
+    p = futu_bridge.FutuProvider(get_settings())
+    with pytest.raises(ProviderError) as ei:
+        await p.quote(parse_symbol("HK.00700"))
+    assert "unreachable" in str(ei.value)

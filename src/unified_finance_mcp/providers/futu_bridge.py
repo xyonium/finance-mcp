@@ -113,10 +113,24 @@ def _run_skill(category: str, name: str, *args, **kwargs):
     """Run a futu-opend-mcp skill synchronously; returns its parsed result dict.
 
     Never raises for skill failures - they surface as ``_skill_error``.
+
+    ``connection.get_context()`` must run before the skill: it is the only
+    path that patches the vendored ``common`` module (encryption-aware
+    ``create_quote_context`` honoring FUTU_OPEND_ENCRYPT/RSA key envs,
+    ``check_ret`` raising ApiError, ``ensure_futu_api``/``safe_close``
+    no-ops). Without it, an unpatched skill would create an UNENCRYPTED
+    context against an encryption-expecting OpenD (package default
+    FUTU_OPEND_ENCRYPT=true). An unreachable OpenD raises
+    ``connection.ApiError`` here, mapped to ``_skill_error`` so providers
+    surface it uniformly as ProviderError.
     """
-    from futu_opend_mcp import skill_runner
+    from futu_opend_mcp import connection, skill_runner
     from futu_opend_mcp.tools._base import skill_fn
 
+    try:
+        connection.get_context()
+    except connection.ApiError as e:
+        return {"_skill_error": True, "error": str(e)}
     return skill_runner._run_skill_json(skill_fn(category, name), *args, **kwargs)
 
 
