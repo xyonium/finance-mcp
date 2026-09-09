@@ -3,4 +3,4 @@ from __future__ import annotations
 
 ALL_MODULES: list[str] = ["quote", "history", "fundamentals", "news",
                           "technicals", "screener", "ownership", "calendar",
-                          "macro", "search"]
+                          "macro", "search", "containers"]
