@@ -440,7 +440,9 @@ def extract_extended_indicators(indicators: dict) -> dict:
         if adx_plus_di > adx_minus_di:
             di_signal = "Bullish (+DI > -DI)"
         else:
-            di_signal = "Bearish (-DI < +DI)"
+            # Reference-faithful literal (indicators.py:434); the else branch
+            # covers -DI >= +DI, and the upstream string reads ">".
+            di_signal = "Bearish (-DI > +DI)"
 
     adx["plus_di"] = _safe_round(adx_plus_di, 2)
     adx["minus_di"] = _safe_round(adx_minus_di, 2)

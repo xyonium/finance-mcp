@@ -42,6 +42,34 @@ def _screener_for(exchange: str) -> str:
 _CODE_BY_PROJECT_INTERVAL = {"1m": "1", "5m": "5", "15m": "15", "1h": "60",
                              "4h": "240", "1d": "1D", "1wk": "1W", "1mo": "1M"}
 
+# Lowercase exchange name -> TradingView screener market, mirroring the
+# reference EXCHANGE_SCREENER (validators.py:28) for every venue this project
+# accepts. Used by the candle_pattern multi-timeframe path (reference
+# get_market_type semantics). NOTE the provider's MARKET_TO_TV_SCREENER keys on
+# PROJECT market codes (US/HK/EG/...) and is deliberately NOT reused here.
+EXCHANGE_NAME_TO_TV_MARKET: dict[str, str] = {
+    "all": "crypto", "huobi": "crypto", "kucoin": "crypto",
+    "coinbase": "crypto", "gateio": "crypto", "binance": "crypto",
+    "bitfinex": "crypto", "bitget": "crypto", "bybit": "crypto",
+    "okx": "crypto", "mexc": "crypto",
+    "bist": "turkey", "egx": "egypt",
+    "nasdaq": "america", "nyse": "america", "amex": "america",
+    "nysearca": "america", "pcx": "america",
+    "bursa": "malaysia", "myx": "malaysia", "klse": "malaysia",
+    "ace": "malaysia", "leap": "malaysia",
+    "hkex": "hongkong", "hk": "hongkong", "hsi": "hongkong",
+    "asx": "australia",
+    "sse": "china", "szse": "china", "chn": "china",
+    "twse": "taiwan", "tpex": "taiwan",
+    "tadawul": "ksa", "tasi": "ksa",
+}
+
+# TA-only venues (reference _TA_ONLY_SCREENERS): tradingview-screener returns
+# zero rows for these markets, so the multi-timeframe scanner path must never
+# query them (reference comment: "scanner / multi-timeframe paths ... never
+# query an unsupported market").
+_TA_ONLY_EXCHANGES = frozenset({"oanda", "fx_idc", "fxcm", "tvc", "capitalcom"})
+
 
 def _fetch_analysis(screener: str, interval: str, symbols: list[str], context: str):
     """tradingview_ta.get_multiple_analysis with interval-mapped codes.
@@ -642,6 +670,10 @@ def candle_pattern(exchange: str, timeframe: str = "15m", pattern_length: int = 
     """Advanced candle pattern scan: TradingView screener (Query) first, then
     tradingview_ta single-timeframe fallback (reference advanced_candle_pattern).
     """
+    if exchange.strip().lower() in _TA_ONLY_EXCHANGES:
+        raise ProviderError(
+            f"candle_pattern: exchange {exchange!r} has no screener market "
+            "(TA-only venue); use a stock or crypto exchange")
     symbols = _symbols_for(exchange)
     symbols = symbols[:min(limit * 2, 100)]
     try:
@@ -678,8 +710,7 @@ def _multi_tf_patterns(exchange: str, symbols: list[str], base_tf: str,
         f"volume|{tv_interval}", "RSI",
     ]
 
-    from ..providers.tradingview import MARKET_TO_TV_SCREENER
-    market = MARKET_TO_TV_SCREENER.get(exchange.upper(), "crypto")
+    market = EXCHANGE_NAME_TO_TV_MARKET.get(exchange.strip().lower(), "crypto")
     q = (Query().set_markets(market).select(*cols)
          .where(Column("exchange") == exchange.upper()).limit(len(symbols)))
 

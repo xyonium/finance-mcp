@@ -43,15 +43,23 @@ _VALID_EXCHANGES = {
 
 
 def sanitize_timeframe(tf: str, default: str = "1D") -> str:
-    """Reference sanitize_timeframe: alias lookup, else default."""
-    if not tf:
+    """Reference sanitize_timeframe: alias lookup, else default.
+
+    Non-str input falls back to the default (containers must never raise on
+    garbage arguments).
+    """
+    if not isinstance(tf, str) or not tf:
         return default
     return _TIMEFRAME_ALIASES.get(tf.strip().lower(), default)
 
 
 def sanitize_exchange(ex: str, default: str = "kucoin") -> str:
-    """Reference sanitize_exchange: legal set, else default."""
-    if not ex:
+    """Reference sanitize_exchange: legal set, else default.
+
+    Non-str input falls back to the default (containers must never raise on
+    garbage arguments).
+    """
+    if not isinstance(ex, str) or not ex:
         return default
     exs = ex.strip().lower()
     return exs if exs in _VALID_EXCHANGES else default
@@ -61,8 +69,11 @@ async def _run(action, impl):
     try:
         return await anyio.to_thread.run_sync(impl)
     except ProviderError as e:
-        return tool_error(str(e), source="tradingview")
+        # Preserve the taxonomy kind (rate_limited / not_found / ...) at the
+        # container boundary, like _routing.py's "kind: msg" source_errors.
+        return tool_error(f"{e.kind}: {str(e)[:200]}", source="tradingview")
     except Exception as e:  # noqa: BLE001 - containers never raise
+        # Non-ProviderError has no kind; keep the type name for diagnosability.
         return tool_error(f"{action}: {type(e).__name__}: {str(e)[:200]}",
                           source="tradingview")
 
@@ -86,6 +97,12 @@ def _clamp_int(value, minimum, maximum, default) -> int:
         return max(minimum, min(int(value), maximum))
     except (TypeError, ValueError):
         return default
+
+
+def _known_action(routes: dict, action) -> bool:
+    """Hash-safe unknown-action check: non-str actions are never valid keys
+    and must not make the `action not in dict` lookup raise TypeError."""
+    return isinstance(action, str) and action in routes
 
 
 # ── tv_scan routes ──────────────────────────────────────────────────────────
@@ -116,7 +133,7 @@ async def tv_scan(action: str, exchange: str = "US", timeframe: str = "1d",
     Actions: top_gainers, top_losers, bollinger_squeeze, rating,
     consecutive_candles, volume_breakout, smart_volume.
     """
-    if action not in _TV_SCAN_ROUTES:
+    if not _known_action(_TV_SCAN_ROUTES, action):
         return tool_error(f"unknown action {action!r}",
                           hint=f"可用 action: {sorted(_TV_SCAN_ROUTES)}")
     params = {
@@ -165,11 +182,11 @@ async def tv_analyze(action: str, symbol: str, exchange: str | None = None,
     Actions: summary (key fields of coin), coin (full analysis dict),
     candle_pattern, multi_timeframe, volume_confirmation.
     """
-    if not symbol or not symbol.strip():
+    if not isinstance(symbol, str) or not symbol.strip():
         return tool_error("symbol is required for tv_analyze",
                           hint="pass a TradingView symbol like EGX:COMI, "
                                "NASDAQ:AAPL, BINANCE:BTCUSDT")
-    if action not in _TV_ANALYZE_ROUTES:
+    if not _known_action(_TV_ANALYZE_ROUTES, action):
         return tool_error(f"unknown action {action!r}",
                           hint=f"可用 action: {sorted(_TV_ANALYZE_ROUTES)}")
     raw = symbol.strip()
@@ -227,7 +244,10 @@ def _egx_index_route(p: dict) -> dict:
     """index action: reject EGX100 (no vendored constituent table)."""
     from ..data.egx_indices import EGX_INDICES
 
-    key = p["index"].strip().upper()
+    raw = p["index"]
+    if not isinstance(raw, str) or not raw.strip():
+        raise ProviderError("index is required for egx index action")
+    key = raw.strip().upper()
     if key == "EGX100":
         raise ProviderError(
             f"{key} has no vendored constituent table in this package",
@@ -240,14 +260,14 @@ def _egx_index_route(p: dict) -> dict:
 
 def _egx_trade_plan_route(p: dict) -> dict:
     symbol = p["symbol"]
-    if not symbol or not symbol.strip():
+    if not isinstance(symbol, str) or not symbol.strip():
         raise ProviderError("symbol is required for egx trade_plan")
     return _tv.egx_trade_plan(symbol.strip(), p["timeframe"])
 
 
 def _egx_fibonacci_route(p: dict) -> dict:
     symbol = p["symbol"]
-    if not symbol or not symbol.strip():
+    if not isinstance(symbol, str) or not symbol.strip():
         raise ProviderError("symbol is required for egx fibonacci")
     return _tv.egx_fibonacci(symbol.strip(), p["lookback"], p["timeframe"])
 
@@ -269,7 +289,7 @@ async def egx_market(action: str, **kwargs) -> dict:
 
     Actions: overview, sector_scan, index, screener, trade_plan, fibonacci.
     """
-    if action not in _EGX_ROUTES:
+    if not _known_action(_EGX_ROUTES, action):
         return tool_error(f"unknown action {action!r}",
                           hint=f"可用 action: {sorted(_EGX_ROUTES)}")
     params = {
@@ -280,10 +300,18 @@ async def egx_market(action: str, **kwargs) -> dict:
         "min_score": _clamp_int(kwargs.get("min_score"), 0, 100, 55),
         "index_filter": kwargs.get("index_filter", ""),
         "symbol": kwargs.get("symbol", ""),
-        "lookback": (kwargs.get("lookback") or "52W").strip().upper(),
+        "lookback": _sanitize_lookback(kwargs.get("lookback")),
     }
     result = await _run(f"egx_market:{action}", lambda: _EGX_ROUTES[action](params))
     return result if "error" in result else {"data": sanitize(result)}
+
+
+def _sanitize_lookback(lookback) -> str:
+    """lookback: reference `lookback.strip().upper()`, default "52W"; non-str
+    falls back to the default (containers must never raise on garbage)."""
+    if not isinstance(lookback, str):
+        return "52W"
+    return lookback.strip().upper() or "52W"
 
 
 def register(mcp, providers, settings) -> None:

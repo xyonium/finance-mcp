@@ -726,3 +726,250 @@ async def test_egx_market_does_not_touch_network(monkeypatch):
     from unified_finance_mcp.tools import containers
     out = await containers.egx_market("bogus")
     assert "error" in out
+
+
+# ── R1 fixes (controller rulings F1-F4) ─────────────────────────────────────
+
+# F1: containers never raise on garbage input.
+
+_GARBAGE_ERROR_PROBES = [
+    ("tv_analyze non-str symbol",
+     lambda m: m.tv_analyze("coin", symbol=5)),
+    ("tv_analyze non-str action",
+     lambda m: m.tv_analyze(5, symbol="X")),
+    ("tv_analyze list action",
+     lambda m: m.tv_analyze(["coin"], symbol="X")),
+    ("tv_analyze None symbol",
+     lambda m: m.tv_analyze("coin", symbol=None)),
+    ("tv_scan list action",
+     lambda m: m.tv_scan(["top_gainers"])),
+    ("tv_scan None action",
+     lambda m: m.tv_scan(None)),
+    ("tv_scan int action",
+     lambda m: m.tv_scan(7)),
+    ("egx_market None action",
+     lambda m: m.egx_market(None)),
+    ("egx_market list action",
+     lambda m: m.egx_market(["overview"])),
+    ("egx_market trade_plan int symbol",
+     lambda m: m.egx_market("trade_plan", symbol=7)),
+    ("egx_market fibonacci int symbol",
+     lambda m: m.egx_market("fibonacci", symbol=7)),
+    ("egx_market index int index",
+     lambda m: m.egx_market("index", index=5)),
+    ("egx_market garbage lookback",
+     lambda m: m.egx_market("fibonacci", symbol="COMI", lookback=5)),
+]
+
+
+@pytest.mark.parametrize("label,call", _GARBAGE_ERROR_PROBES,
+                         ids=[p[0] for p in _GARBAGE_ERROR_PROBES])
+async def test_containers_never_raise_garbage_error(label, call, monkeypatch):
+    from unified_finance_mcp.tools import containers as containers_mod
+
+    # The lookback probe falls through to the real egx_fibonacci impl; stub it
+    # (hermetic: no container test may reach real TradingView code).
+    def stub_fib(symbol, lookback, timeframe):
+        raise RuntimeError("stubbed egx_fibonacci (probe)")
+
+    monkeypatch.setattr("unified_finance_mcp.tools._tv_scanners.egx_fibonacci",
+                        stub_fib)
+    out = await call(containers_mod)
+    assert isinstance(out, dict), label
+    assert "error" in out, label
+
+
+async def test_egx_market_lookback_sanitized(monkeypatch):
+    from unified_finance_mcp.tools import containers as containers_mod
+
+    captured = {}
+
+    def fake(symbol, lookback, timeframe):
+        captured.update(symbol=symbol, lookback=lookback, timeframe=timeframe)
+        return {"trend": "uptrend"}
+
+    monkeypatch.setattr("unified_finance_mcp.tools._tv_scanners.egx_fibonacci", fake)
+    for lookback, expected in ((5, "52W"), ("3m", "3M"), ("", "52W"),
+                               (None, "52W")):
+        out = await containers_mod.egx_market("fibonacci", symbol="COMI",
+                                              lookback=lookback)
+        assert out == {"data": {"trend": "uptrend"}}
+        assert captured["lookback"] == expected, lookback
+
+
+@pytest.mark.parametrize("kwargs,expected_ex,expected_tf", [
+    # tv_scan's defaults are the bare "US"/"1D" (only str inputs are
+    # lowercased/aliased by the sanitizers).
+    ({"exchange": 5}, "US", "1D"),
+    ({"exchange": ["egx"]}, "US", "1D"),
+    ({"timeframe": 42}, "US", "1D"),
+    ({"timeframe": None}, "US", "1D"),
+    ({"timeframe": ["1d"]}, "US", "1D"),
+])
+async def test_tv_scan_sanitizers_fall_back_on_garbage(monkeypatch, kwargs,
+                                                   expected_ex, expected_tf):
+    from unified_finance_mcp.tools import containers as containers_mod
+
+    captured = {}
+
+    def fake(exchange, timeframe, limit):
+        captured.update(exchange=exchange, timeframe=timeframe, limit=limit)
+        return []
+
+    monkeypatch.setattr("unified_finance_mcp.tools._tv_scanners.top_gainers", fake)
+    out = await containers_mod.tv_scan("top_gainers", **kwargs)
+    assert out == {"data": []}
+    assert captured["exchange"] == expected_ex
+    assert captured["timeframe"] == expected_tf
+
+
+@pytest.mark.parametrize("limit", ["x", None, ["z"], {"a": 1}])
+async def test_tv_scan_clamp_limit_garbage_falls_back(monkeypatch, limit):
+    from unified_finance_mcp.tools import containers as containers_mod
+
+    captured = {}
+
+    def fake(exchange, timeframe, limit_):
+        captured.update(limit=limit_)
+        return []
+
+    monkeypatch.setattr("unified_finance_mcp.tools._tv_scanners.top_gainers", fake)
+    out = await containers_mod.tv_scan("top_gainers", limit=limit)
+    assert out == {"data": []}
+    assert captured["limit"] == 1
+
+
+# F2: di_signal string must match the reference exactly.
+
+def test_extended_indicators_di_signal_reference_parity():
+    from unified_finance_mcp.tools._tv_math import extract_extended_indicators
+
+    bearish = {"close": 100.0, "open": 98.0, "ADX+DI": 10.0, "ADX-DI": 20.0}
+    out = extract_extended_indicators(bearish)
+    assert out["adx"]["di_signal"] == "Bearish (-DI > +DI)"  # reference :434
+    bullish = {"close": 100.0, "open": 98.0, "ADX+DI": 20.0, "ADX-DI": 10.0}
+    assert extract_extended_indicators(bullish)["adx"]["di_signal"] == \
+        "Bullish (+DI > -DI)"
+    neutral = {"close": 100.0, "open": 98.0}
+    assert extract_extended_indicators(neutral)["adx"]["di_signal"] == "Neutral"
+
+
+# F3: multi-TF candle pattern market lookup.
+
+# Hardcoded reference EXCHANGE_SCREENER subset (reference validators.py:28),
+# limited to the keys this project's _VALID_EXCHANGES accepts.
+_REFERENCE_EXCHANGE_NAME_TO_TV_MARKET = {
+    "all": "crypto", "huobi": "crypto", "kucoin": "crypto",
+    "coinbase": "crypto", "gateio": "crypto", "binance": "crypto",
+    "bitfinex": "crypto", "bitget": "crypto", "bybit": "crypto",
+    "okx": "crypto", "mexc": "crypto",
+    "bist": "turkey", "egx": "egypt",
+    "nasdaq": "america", "nyse": "america", "amex": "america",
+    "nysearca": "america", "pcx": "america",
+    "bursa": "malaysia", "myx": "malaysia", "klse": "malaysia",
+    "ace": "malaysia", "leap": "malaysia",
+    "hkex": "hongkong", "hk": "hongkong", "hsi": "hongkong",
+    "asx": "australia",
+    "sse": "china", "szse": "china", "chn": "china",
+    "twse": "taiwan", "tpex": "taiwan",
+    "tadawul": "ksa", "tasi": "ksa",
+}
+
+
+def test_exchange_name_to_tv_market_matches_reference_subset():
+    from unified_finance_mcp.tools import _tv_scanners
+
+    assert _tv_scanners.EXCHANGE_NAME_TO_TV_MARKET == \
+        _REFERENCE_EXCHANGE_NAME_TO_TV_MARKET
+
+
+class FakePatternQuery:
+    """Captures set_markets; get_scanner_data returns an empty frame."""
+
+    def __init__(self):
+        self.markets = None
+
+    def set_markets(self, *markets):
+        self.markets = markets
+        return self
+
+    def select(self, *cols):
+        return self
+
+    def where(self, *exprs):
+        return self
+
+    def limit(self, n):
+        return self
+
+    def get_scanner_data(self):
+        import pandas as pd
+        return 0, pd.DataFrame()
+
+
+@pytest.mark.parametrize("exchange,expected", [
+    ("egx", "egypt"), ("EGX", "egypt"), ("nasdaq", "america"),
+    ("kucoin", "crypto"), ("bist", "turkey"), ("hkex", "hongkong"),
+])
+def test_multi_tf_patterns_market_lookup(monkeypatch, exchange, expected):
+    from unified_finance_mcp.tools import _tv_scanners
+
+    q = FakePatternQuery()
+    monkeypatch.setattr("tradingview_screener.Query", lambda: q)
+    out = _tv_scanners._multi_tf_patterns(exchange, [], "15m", 3, 10.0)
+    assert out == []
+    assert q.markets == (expected,)
+
+
+def test_candle_pattern_ta_only_venue_raises_before_query(monkeypatch):
+    from unified_finance_mcp.errors import ProviderError
+    from unified_finance_mcp.tools import _tv_scanners
+
+    def boom():
+        raise AssertionError("Query must not be instantiated for TA-only venues")
+
+    monkeypatch.setattr("tradingview_screener.Query", boom)
+    for venue in ("oanda", "fx_idc", "fxcm", "tvc", "capitalcom"):
+        with pytest.raises(ProviderError) as exc:
+            _tv_scanners.candle_pattern(venue, "15m")
+        assert "TA-only" in str(exc.value) or "no screener market" in str(exc.value)
+
+
+async def test_tv_analyze_candle_pattern_ta_only_venue_tool_error(monkeypatch):
+    from unified_finance_mcp.tools import containers as containers_mod
+
+    def boom():
+        raise AssertionError("Query must not be instantiated for TA-only venues")
+
+    monkeypatch.setattr("tradingview_screener.Query", boom)
+    out = await containers_mod.tv_analyze("candle_pattern", symbol="EURUSD",
+                                          exchange="oanda")
+    assert isinstance(out, dict)
+    assert "error" in out and "oanda" in out["error"]
+
+
+# F4: container error dicts preserve the ProviderError kind.
+
+async def test_container_preserves_rate_limited_kind(monkeypatch):
+    from unified_finance_mcp.errors import RateLimited
+    from unified_finance_mcp.tools import containers as containers_mod
+
+    def boom(exchange, timeframe, limit):
+        raise RateLimited("tradingview throttle")
+
+    monkeypatch.setattr("unified_finance_mcp.tools._tv_scanners.top_gainers", boom)
+    out = await containers_mod.tv_scan("top_gainers")
+    assert out["error"].startswith("rate_limited: ")
+    assert out["source"] == "tradingview"
+
+
+async def test_container_preserves_not_found_kind(monkeypatch):
+    from unified_finance_mcp.tools import containers as containers_mod
+    from unified_finance_mcp.tools._tv_scanners import NotFoundError
+
+    def boom(symbol, exchange, timeframe):
+        raise NotFoundError("no data for EGX:NOPE")
+
+    monkeypatch.setattr("unified_finance_mcp.tools._tv_scanners.coin", boom)
+    out = await containers_mod.tv_analyze("coin", symbol="NOPE", exchange="egx")
+    assert out["error"].startswith("not_found: ")
