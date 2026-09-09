@@ -12,6 +12,11 @@ and a body of `{"Note": ...}` or `{"Information": ...}`; that shape is mapped to
 """
 from __future__ import annotations
 
+import csv
+import io
+import json
+from datetime import date
+
 from ..config import DEFAULT_AV_BASE_URL, Settings
 from ..errors import NotFound, ProviderError, RateLimited, UpstreamError, scrub
 from ..http import PoliteClient
@@ -108,6 +113,17 @@ def _series(data: dict, prefix: str) -> dict:
         if key.startswith(prefix) and isinstance(value, dict):
             return value
     raise NotFound(f"alphavantage: response has no {prefix!r} object")
+
+
+def _in_window(raw_date, start, end) -> bool:
+    """reportDate within [start, end] (inclusive). Unparseable -> dropped."""
+    if not raw_date:
+        return False
+    try:
+        d = date.fromisoformat(str(raw_date)[:10])
+    except ValueError:
+        return False
+    return not ((start and d.isoformat() < start) or (end and d.isoformat() > end))
 
 
 class AlphaVantageProvider(Provider):
@@ -300,3 +316,44 @@ class AlphaVantageProvider(Provider):
             row["match_score"] = _num(row.get("match_score"))
             out.append(row)
         return out
+
+    async def events_calendar(self, kind: str, start=None, end=None) -> list[dict]:
+        """Earnings calendar only: EARNINGS_CALENDAR returns CSV text.
+
+        fmp covers dividends/ipo, so a non-earnings kind raises ProviderError
+        and route_and_call falls back naturally. AV has no date params for this
+        endpoint, so start/end filter rows in-process by `reportDate` (rows
+        with unparseable dates are ignored).
+        """
+        if kind != "earnings":
+            raise ProviderError(f"alphavantage: events kind {kind!r} not supported")
+        url = f"{self._base}/query"
+        try:
+            text = await self._get_client().get_text(
+                url, params={"function": "EARNINGS_CALENDAR", "apikey": self._apikey})
+        except UpstreamError as e:
+            raise UpstreamError(scrub(f"alphavantage: {e}", self._apikey)) from e
+        # Same 200-body discipline as _get: a throttled EARNINGS_CALENDAR
+        # returns a plain-text Note/Information JSON, not CSV.
+        if text.lstrip().startswith("{"):
+            try:
+                data = json.loads(text)
+            except ValueError as e:
+                raise UpstreamError(f"alphavantage: non-CSV body from "
+                                    f"{scrub(url, self._apikey)}") from e
+            note = data.get("Note") or data.get("Information")
+            if note:
+                raise RateLimited(f"alphavantage: {scrub(str(note)[:200], self._apikey)} "
+                                  f"[{_RATE_LIMIT_HINT}]")
+            if data.get("Error Message"):
+                raise NotFound("alphavantage: "
+                               f"{scrub(str(data['Error Message'])[:200], self._apikey)}")
+            raise NotFound(f"alphavantage: unexpected body from {scrub(url, self._apikey)}")
+        reader = csv.DictReader(io.StringIO(text))
+        rows = list(reader)
+        if not rows or reader.fieldnames is None:
+            raise NotFound(f"alphavantage: empty earnings calendar from "
+                           f"{scrub(url, self._apikey)}")
+        if start or end:
+            rows = [r for r in rows if _in_window(r.get("reportDate"), start, end)]
+        return rows

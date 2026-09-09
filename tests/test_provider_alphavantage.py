@@ -413,3 +413,61 @@ def test_economic_indicator_map():
     assert set(ECONOMIC_INDICATORS) == {
         "GDP", "CPI", "INFLATION", "UNEMPLOYMENT", "FEDERAL_FUNDS_RATE",
         "TREASURY_YIELD_10Y", "RETAIL_SALES", "NONFARM_PAYROLL"}
+
+
+CSV_BODY = ("symbol,name,reportDate,estimate\r\n"
+            "AAPL,Apple Inc,2026-01-29,2.40\r\n"
+            "MSFT,Microsoft Corp,2026-01-30,3.10\r\n"
+            "COMI,Commercial Intl,2025-12-31,0.10\r\n")
+
+
+@respx.mock
+async def test_events_calendar_csv_parsed(monkeypatch):
+    respx.get(BASE).respond(200, text=CSV_BODY)
+    p = make_provider(monkeypatch)
+    rows = await p.events_calendar("earnings")
+    assert len(rows) == 3
+    assert rows[0] == {"symbol": "AAPL", "name": "Apple Inc",
+                       "reportDate": "2026-01-29", "estimate": "2.40"}
+    assert respx.calls[0].request.url.params["function"] == "EARNINGS_CALENDAR"
+
+
+@respx.mock
+async def test_events_calendar_date_filtering(monkeypatch):
+    respx.get(BASE).respond(200, text=CSV_BODY)
+    p = make_provider(monkeypatch)
+    rows = await p.events_calendar("earnings", start="2026-01-01", end="2026-01-31")
+    assert [r["symbol"] for r in rows] == ["AAPL", "MSFT"]  # COMI predates start
+    rows_end = await p.events_calendar("earnings", end="2026-01-29")
+    assert [r["symbol"] for r in rows_end] == ["AAPL", "COMI"]  # MSFT is after end
+
+
+async def test_events_calendar_non_earnings_kind_raises(monkeypatch):
+    p = make_provider(monkeypatch)
+    with pytest.raises(ProviderError) as ei:
+        await p.events_calendar("dividends")
+    assert "dividends" in str(ei.value) and "not supported" in str(ei.value)
+
+
+@respx.mock
+async def test_events_calendar_note_body_is_rate_limited(monkeypatch):
+    respx.get(BASE).respond(200, text='{"Note": "rate limit exceeded"}')
+    p = make_provider(monkeypatch)
+    with pytest.raises(RateLimited):
+        await p.events_calendar("earnings")
+
+
+@respx.mock
+async def test_events_calendar_garbage_body_is_not_found(monkeypatch):
+    respx.get(BASE).respond(200, text="<html>oops</html>")
+    p = make_provider(monkeypatch)
+    with pytest.raises(NotFound):
+        await p.events_calendar("earnings")
+
+
+@respx.mock
+async def test_events_calendar_error_message_body_is_not_found(monkeypatch):
+    respx.get(BASE).respond(200, text='{"Error Message": "invalid API call"}')
+    p = make_provider(monkeypatch)
+    with pytest.raises(NotFound):
+        await p.events_calendar("earnings")

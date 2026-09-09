@@ -72,3 +72,33 @@ class PoliteClient:
                 raise UpstreamError(f"HTTP {resp.status_code} from {host}")
             return resp.json()
         raise last if last is not None else UpstreamError(f"request to {host} failed")
+
+    async def get_text(self, url: str, params: dict | None = None,
+                       headers: dict | None = None) -> str:
+        """Like get_json but returns the raw response body as text.
+
+        For CSV/plain-text endpoints (e.g. Alpha Vantage EARNINGS_CALENDAR).
+        Same pacing/retry/error discipline as get_json.
+        """
+        host = urlparse(url).netloc
+        last: Exception | None = None
+        for attempt in range(self._max_retries + 1):
+            await self._pace(host)
+            try:
+                resp = await self._client.get(url, params=params, headers=headers)
+            except httpx.HTTPError as e:
+                last = UpstreamError(f"network error from {host}: {e}")
+                await asyncio.sleep(0.5 * (2 ** attempt))
+                continue
+            if resp.status_code in (429, 503):
+                last = RateLimited(f"HTTP {resp.status_code} from {host}")
+                await asyncio.sleep(self._retry_after(resp, attempt))
+                continue
+            if resp.status_code in (401, 403):
+                raise AuthError(f"HTTP {resp.status_code} from {host}")
+            if resp.status_code == 404:
+                raise NotFound(f"HTTP 404 from {host}")
+            if resp.status_code >= 400:
+                raise UpstreamError(f"HTTP {resp.status_code} from {host}")
+            return resp.text
+        raise last if last is not None else UpstreamError(f"request to {host} failed")
