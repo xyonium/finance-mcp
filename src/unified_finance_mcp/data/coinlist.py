@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-COINLIST_DIR = Path(__file__).with_name("")
+COINLIST_DIR = Path(__file__).parent
 
 _SUGGESTION_EXCLUDE = {"all"}
 
