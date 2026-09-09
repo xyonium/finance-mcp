@@ -69,8 +69,32 @@ def test_load_symbols_matches_reference_files(exchange):
 def test_exchanges_listing_symbol():
     listed = coinlist.exchanges_listing_symbol("COMI")
     assert any(e.lower() == "egx" for e in listed)
-    assert "all" not in listed  # _SUGGESTION_EXCLUDE aggregate never surfaces
+    assert "ALL" not in listed  # returned names are uppercase exchange names
     assert coinlist.exchanges_listing_symbol("ZZZ_NO_SUCH") == []
+
+
+def test_suggestion_exclude_aggregate_never_surfaces():
+    # ONGUSDT is listed in BOTH binance.txt and the all.txt aggregate, so if
+    # _SUGGESTION_EXCLUDE were deleted the aggregate would surface as "ALL"
+    # (names are uppercased) — killing that mutation (M3). With the exclusion
+    # active, only the real venue listing remains.
+    agg = coinlist.exchanges_listing_symbol("ONGUSDT")
+    assert "ALL" not in agg  # _SUGGESTION_EXCLUDE 聚合表永不浮出
+    assert "BINANCE" in agg
+
+
+# F-2: _symbols_for must raise ProviderError when the vendored list is empty
+# (kills the mutation that deletes the raise — M9).
+
+def test_symbols_for_raises_provider_error_on_empty_vendored_list(monkeypatch):
+    from unified_finance_mcp.errors import ProviderError
+    from unified_finance_mcp.tools import _tv_scanners
+
+    monkeypatch.setattr("unified_finance_mcp.data.coinlist.load_symbols",
+                        lambda exchange: [])
+    with pytest.raises(ProviderError) as exc:
+        _tv_scanners._symbols_for("egx")
+    assert "egx" in str(exc.value)  # exchange name carried in the message
 
 
 # ── (e) end-to-end: vendored symbols reach the network layer ────────────────
