@@ -80,6 +80,7 @@ class Provider(Protocol):
 | alphavantage | AV REST `https://www.alphavantage.co/query?function=...` | `ALPHAVANTAGE_API_KEY` + `ALPHAVANTAGE_BASE_URL` | 美国股票 + 全球外汇/加密；股票基本面仅美国 |
 | marketaux | marketaux REST `https://api.marketaux.com/v1/...` | `MARKETAUX_API_TOKEN` + `MARKETAUX_BASE_URL` | 新闻（按 entity/country 过滤） |
 | futu | `futu-opend-mcp` 挂载 + `futu-api` SDK 内部调用 | 沿用 `FUTU_OPEND_HOST/PORT/ENCRYPT/RSA_KEY` | HK/US/SH/SZ/SG/MY/JP |
+| kimi | Kimi Datasource REST（自描述 meta 源，见 §3.4） | `KIMI_BASE_URL` + `KIMI_ACCESS_TOKEN` | 天眼查企业数据、wind/iFinD A股深度、世行/IMF/OECD/FRED 宏观、SEC EDGAR、S&P Capital IQ、财新/新华财经新闻、gildata 选股 |
 
 **Alpha Vantage 限流怪癖**：限流时返回 HTTP 200 但 body 含 `{"Note": ...}` 或 `{"Information": ...}`。客户端必须识别该标记并映射为 rate-limited 错误（带 hint："日额度耗尽；明天重置，或配置多 key 走 api-key-rotator"）。
 
@@ -98,6 +99,36 @@ class Provider(Protocol):
 **rotator 侧后续工作**（api-key-rotator 仓库，不属于本 repo）：新增 FMP profile（`AuthQueryParam=apikey`，401/429/402 触发轮换）与 AV profile（`AuthQueryParam=apikey`，429 + 200-body Note/Information 标记触发轮换；AV 无余额端点，套用 exa 模式：每 key 预置日预算、本地递减、UTC 午夜重置）。
 
 **无 key 优雅降级**：provider `available()=False` 时 auto 路由跳过该源；若用户显式 `source="fmp"` 但未配 key，返回 `{"error", "hint": "set FMP_API_KEY or point FMP_BASE_URL at api-key-rotator"}`。
+
+### 3.4 Kimi Datasource（meta 源，自描述接入）
+
+Kimi Datasource 是 Kimi Code 官方数据插件的后端 API（计入用户 199 会员套餐额度，按次计费，只读）。一个端点挂 12+ 个数据源，后端持续扩充（OECD/FRED/财新/新华财经/iFinD/中国标准等陆续上线），因此**客户端必须自描述，不硬编码各源 API**。
+
+**协议**（参考 AGPL 插件 `piexian/astrbot_plugin_kimi_datasource_api` 与官方文档，本项目自写实现，MIT 不受污染）：
+
+```
+POST {KIMI_BASE_URL}            # 默认 https://api.kimi.com/coding/v1/tools
+Authorization: Bearer {KIMI_ACCESS_TOKEN}
+X-Msh-Device-Id / X-Msh-Platform / X-Msh-Version / User-Agent: kimi-datasource/<v>
+{"method": <method>, "params": {...}}
+```
+
+- `method="get_data_source_desc"`, params `{"name": <source>}` → 返回该源当前 API 文档（Markdown）
+- `method="call_data_source_tool"`, params `{"data_source_name", "api_name", "params"}` → 调具体 API；多数 API 要求 `file_path`（结果 CSV + data_preview 文本）
+- `method="get_stock_realtime_price"`, params `{"ticker"(≤3), "type", "file_path"}` → 快捷行情
+- 已知源：`stock_finance_data yahoo_finance world_bank_open_data tianyancha arxiv scholar yuandian_law wind imf gildata sec_edgar sp_data`（运行时以 describe 实际返回为准；iFinD/财新/新华财经等新源同名接入）
+
+**认证：直读 cliproxy 凭证文件（已验证可行，零改动 CLIProxyAPI）**。官方 changelog 确认 datasource 走 OAuth 凭证（网页 API key 仅覆盖 chat 模型，不能调数据源）。CLIProxyAPI 的 plugin 体系是 translator/provider hooks，不能加任意 HTTP 路由，透传端点方案否决。最终方案：
+
+- `KIMI_AUTH_FILE` 指向 cliproxy 的 kimi 凭证 JSON（如 `/mnt/docker/cliproxy/auths/kimi-*.json`，支持 glob 取第一个 `disabled!=true`）。文件含 `access_token/refresh_token/device_id/expired`，cliproxy 有后台 auto-refresh loop（到期前 5 分钟主动刷新），凭证长期保鲜。
+- 客户端每次调用读文件（mtime 缓存 ~1s），用文件里的 `access_token` + `device_id`（与 cliproxy 同设备身份）。
+- 兜底自刷新：`expired` 临近或上游 401 时，先重读文件一次（cliproxy 可能刚刷新）；仍失效则用公开 client_id（`17e5f671-d194-4dfb-9706-5516cb48c098`，Kimi Code CLI 公开 client）调 `POST https://auth.kimi.com/api/oauth/token`（grant_type=refresh_token）自刷新，flock + tmp+rename 原子写回整个 JSON（保留其他字段）。与 cliproxy 的写冲突概率低，最坏情况用户在 cliproxy 重新登录 kimi。
+- 独立用户（无 cliproxy）：`KIMI_ACCESS_TOKEN` 直接注入（从本人 `~/.kimi-code/credentials/kimi-code.json` 取，README 说明），优先生效，无刷新逻辑。
+- 本项目**不做** device-code 登录流程（登录在 cliproxy 已完成）。
+
+**两个上游坑**（插件 SKILL.md 明示）：天眼查查询必须企业**全称**（先调其搜索 API 补全）；多数 API 缺省必须传 `file_path`（本项目自动生成 `/tmp/unified_finance_mcp/<场景>_<uuid>.csv`，并把响应 `files` 落盘到同目录）。
+
+**关键响应形态**：`{"is_success", "result": {"user": [{"type":"text","text"}...], "assistant": [...]}, "files": [...]}`——`user` 通道是干净 data_preview，`assistant` 兜底；`is_success=false` 映射为上游错误。
 
 ## 4. 符号归一化与市场感知路由
 
@@ -144,15 +175,15 @@ return {"error": "all candidate sources failed", "source_errors": ..., "hint": .
 | get_news | fmp → av(news_sentiment) → marketaux → yahoo |
 | get_technical_indicators | tradingview（评级） / av（50+ 指标库，按 indicator 参数选源） |
 | run_screener | tradingview（全市场） → fmp（美股为主） |
-| get_ownership | yahoo → fmp(13F/insider) → futu（futu 式代码） |
+| get_ownership | yahoo → fmp(13F/insider) → futu（futu 式代码）；CN 非上市实体回退 kimi(天眼查) |
 | get_events_calendar | fmp → av |
-| get_economic_data | av |
+| get_economic_data | kimi（世行/IMF/OECD/FRED，自描述发现具体 api_name） → av |
 | search_symbols | fmp → av → yahoo |
 | quant_backtest | yahoo（数据源） |
 
 ## 5. 工具面
 
-### 5.1 统一工具（13 个，全部 `source="auto"` 起步）
+### 5.1 统一工具（14 个，全部 `source="auto"` 起步）
 
 | 工具 | 说明 |
 |---|---|
@@ -167,6 +198,7 @@ return {"error": "all candidate sources failed", "source_errors": ..., "hint": .
 | `get_events_calendar(type=earnings\|dividends\|economic\|ipo, ...)` | 日历类 |
 | `get_economic_data(indicator, ...)` | 宏观指标序列（GDP/CPI/利率等） |
 | `search_symbols(query, ...)` | 代码检索 |
+| `get_company_risk_cn(company, aspects=None, source="auto")` | 中国企业风险/穿透：工商档案、股东、董监高、司法风险、经营风险、股权穿透、关联图谱；aspects 子集可选，默认全量；内部自动「搜索补全全称 → 逐项调天眼查 → 聚合」 |
 | `quant_backtest(action, ...)` | 见 §5.3 |
 | `get_service_status()` | 各源配置/可用性/覆盖探测诊断 |
 
@@ -176,14 +208,23 @@ return {"error": "all candidate sources failed", "source_errors": ..., "hint": .
 - `tv_analyze(action=summary|coin|candle_pattern|multi_timeframe|volume_confirmation, symbol, exchange, timeframe)`
 - `egx_market(action=overview|sector_scan|sector_scanner|index|screener|trade_plan|fibonacci, ...)` —— 后端只走 tradingview；移植成分股/板块静态表（变化慢），**丢弃硬编码市值快照元数据**，改为 `tradingview-screener` 实时计算
 
-### 5.3 二级披露容器 `quant_backtest`
+### 5.3 二级披露容器 `quant_backtest` 与 `kimi_datasource`
 
-主工具列表里只占一个位置，描述保持精简（"策略回测：run/compare/walk_forward；action='help' 获取完整参数文档"）。
+主工具列表里各占一个位置，描述保持精简（"action='help' 获取完整参数文档" / "action='list' 列出全部数据源"）。
+
+`quant_backtest`：
 
 - `action="help"` → 返回全量子功能文档（每个 action 的完整参数表、策略列表、示例）
 - `action="run"` → 单策略回测（MA 交叉/RSI/布林等，pandas 实现，数据走 yahoo）
 - `action="compare"` → 多策略赛跑
 - `action="walk_forward"` → 滚动前推验证
+
+`kimi_datasource`（Kimi meta 源直通，自描述，后端扩源零改动）：
+
+- `action="list"` → 返回已知数据源清单（静态种子 + describe 探测缓存）
+- `action="describe", source=<name>` → 返回该源当前 API 文档（含每个 api_name 的参数表），结果缓存 24h
+- `action="call", source=<name>, api=<api_name>, params={...}` → 调用具体 API；`file_path` 缺省自动生成，响应 files 落盘并返回路径
+- 金融/商业类问题优先经统一工具路由；本容器用于统一工具未覆盖的深度（wind 分钟线、SEC 文件、S&P 一致预期、财新新闻、iFinD、gildata 自然语言选股、法律/学术/标准等非金融域）
 
 ### 5.4 futu 挂载（56 个工具原样转注册，不加前缀）
 
@@ -210,6 +251,7 @@ Server `instructions` 引导 LLM：跨市场通用查询优先统一工具；fut
 | `FMP_API_KEY` / `FMP_BASE_URL` | FMP | 空 / 官方域名 |
 | `ALPHAVANTAGE_API_KEY` / `ALPHAVANTAGE_BASE_URL` | AV | 空 / 官方域名 |
 | `MARKETAUX_API_TOKEN` / `MARKETAUX_BASE_URL` | marketaux | 空 / 官方域名 |
+| `KIMI_AUTH_FILE` / `KIMI_ACCESS_TOKEN` / `KIMI_BASE_URL` | Kimi Datasource | 空（推荐指 cliproxy `auths/kimi-*.json`）/ 空 / `https://api.kimi.com/coding/v1/tools` |
 | `FUTU_OPEND_HOST/PORT/ENCRYPT/RSA_KEY` | futu（沿用 futu-opend-mcp 约定） | 127.0.0.1:11111 |
 
 约定（reach-mcp）：server 自身旋钮用 `FINANCE_MCP_*` 前缀，第三方凭证沿用厂商惯例名。
@@ -239,5 +281,7 @@ Server `instructions` 引导 LLM：跨市场通用查询优先统一工具；fut
 ## 11. 后续工作（本 repo 之外）
 
 - api-key-rotator 新增 FMP / Alpha Vantage profile（§3.3）
+- （可选，非必需）CLIProxyAPI 增加 kimi datasource 透传路由；当前方案（直读其凭证文件）已够用
 - 用户在 PyPI 配置 `unified-finance-mcp` pending publisher，随后打 `v0.1.0` tag 触发首发
 - 用户 docker 的 mcp config 从 5 个 server 换成 1 个 `unified-finance-mcp`（附 README 迁移示例）
+- （可选）企查查官方 `agent.qcc.com` MCP 作为独立 provider 接入（用户另购额度后；天眼查已覆盖同类数据）
