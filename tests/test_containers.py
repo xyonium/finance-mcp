@@ -16,8 +16,8 @@ from unified_finance_mcp.data import egx_indices, egx_sectors
 
 def test_containers_registered_in_all_modules():
     assert "containers" in tools_pkg.ALL_MODULES
-    assert len(tools_pkg.ALL_MODULES) == 11
-    assert len(set(tools_pkg.ALL_MODULES)) == 11  # no duplicates
+    assert len(tools_pkg.ALL_MODULES) == 12
+    assert len(set(tools_pkg.ALL_MODULES)) == 12  # no duplicates
 
 
 # ── vendored EGX constituent tables ─────────────────────────────────────────
