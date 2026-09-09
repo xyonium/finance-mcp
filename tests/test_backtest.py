@@ -626,6 +626,66 @@ def test_indicators_calc_bollinger_macd_atr_supertrend_donchian():
     assert dc["lower"][19] == min(lows[:20])
 
 
+# ── R1 (F1): _candles_from_frame volume NaN/None coercion ──────────────────
+
+class _FakeYfFrame:
+    """Duck-typed yfinance frame: production only calls
+    reset_index().to_dict("records")."""
+
+    def __init__(self, rows):
+        self._rows = rows
+
+    def reset_index(self):
+        return self
+
+    def to_dict(self, orient=None):
+        return list(self._rows)
+
+
+def test_candles_from_frame_volume_nan_none_coerced_to_zero():
+    from unified_finance_mcp.tools import _backtest_engine as engine
+
+    rows = [
+        {"Date": dt.datetime(2024, 1, 1, tzinfo=dt.timezone.utc), "Open": 100.0, "High": 101.0,
+         "Low": 99.0, "Close": 100.5, "Volume": 123_456},
+        {"Date": dt.datetime(2024, 1, 2, tzinfo=dt.timezone.utc), "Open": 101.0, "High": 102.0,
+         "Low": 100.0, "Close": 101.5, "Volume": None},
+        {"Date": dt.datetime(2024, 1, 3, tzinfo=dt.timezone.utc), "Open": 102.0, "High": 103.0,
+         "Low": 101.0, "Close": 102.5, "Volume": float("nan")},
+        {"Date": dt.datetime(2024, 1, 4, tzinfo=dt.timezone.utc), "Open": float("nan"), "High": 103.0,
+         "Low": 101.0, "Close": 103.5, "Volume": 500},
+        {"Date": dt.datetime(2024, 1, 5, tzinfo=dt.timezone.utc), "Open": 103.0, "High": 104.0,
+         "Low": None, "Close": 104.5, "Volume": 600},
+    ]
+    out = engine._candles_from_frame(_FakeYfFrame(rows), "1d")
+    assert [c["date"] for c in out] == ["2024-01-01", "2024-01-02", "2024-01-03"]
+    assert out[0]["volume"] == 123_456
+    assert out[1]["volume"] == 0  # sparse volume → 0, row kept (reference `v or 0`)
+    assert out[2]["volume"] == 0  # NaN volume → 0, row kept
+    assert out[0]["close"] == 100.5
+    assert out[1]["close"] == 101.5
+    assert out[2]["close"] == 102.5
+
+
+def test_candles_from_frame_real_pandas_volume_none_coerced():
+    """Reviewer repro: pandas coerces None volume to NaN, so the plain
+    `is not None` guard never fired and int(NaN) raised ValueError."""
+    pd = pytest.importorskip("pandas")
+
+    from unified_finance_mcp.tools import _backtest_engine as engine
+
+    frame = pd.DataFrame(
+        {"Open": [100.0, 101.0], "High": [101.0, 102.0],
+         "Low": [99.0, 100.0], "Close": [100.5, 101.5],
+         "Volume": [123_456, None]},
+        index=pd.DatetimeIndex(["2024-01-01", "2024-01-02"], name="Date"),
+    )
+    out = engine._candles_from_frame(frame, "1d")
+    assert [c["date"] for c in out] == ["2024-01-01", "2024-01-02"]
+    assert out[0]["volume"] == 123_456
+    assert out[1]["volume"] == 0
+
+
 # ── hermeticity guard (T10-C1, in-process getaddrinfo guard) ───────────────
 
 def _getaddrinfo_fail(*args, **kwargs):

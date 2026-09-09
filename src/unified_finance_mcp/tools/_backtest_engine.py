@@ -90,7 +90,10 @@ def _candles_from_frame(frame, interval: str) -> list[dict]:
             "high":   round(float(h), 4),
             "low":    round(float(l), 4),
             "close":  round(float(c), 4),
-            "volume": int(row.get("Volume")) if row.get("Volume") is not None else 0,
+            "volume": (int(row.get("Volume"))
+                       if (row.get("Volume") is not None
+                           and not _bad_price(row.get("Volume")))
+                       else 0),
         })
     return candles
 
