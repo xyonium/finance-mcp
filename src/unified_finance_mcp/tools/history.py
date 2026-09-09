@@ -19,7 +19,9 @@ def register(mcp, providers, settings) -> None:
         YYYY-MM-DD strings; omitted means the source's default window. Accepts
         futu (HK.00700), yahoo (0700.HK, COMI.CA) or TradingView (EGX:COMI)
         symbol forms; bare tickers default to US. `source` may be auto | futu |
-        yahoo | fmp | alphavantage. Returns {"data": [bar, ...]}.
+        yahoo | fmp | alphavantage. Returns {"data": [bar, ...]} on success, or
+        the routing error dict at the top level on failure — callers check
+        `"error" in out` (T11-T13 follow the same convention).
         """
         try:
             parsed = parse_symbol(code)
