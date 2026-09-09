@@ -283,3 +283,49 @@ def test_exchange_map_covers_major_exchanges():
     assert set(EXCHANGE_TO_MARKET) >= {
         "NASDAQ", "NYSE", "AMEX", "HKEX", "SSE", "SZSE", "EGX", "TSX",
         "LSE", "TSE", "XETR", "EURONEXT", "ASX", "SGX", "BURSA"}
+
+
+@respx.mock
+async def test_screener_native_param_mapping(monkeypatch):
+    monkeypatch.setenv("FINANCE_MCP_MIN_HOST_DELAY", "0")
+    route = respx.get("https://financialmodelingprep.com/stable/company-screener").respond(
+        200, json=[{"symbol": "AAPL", "price": 189.5, "marketCap": 2.9e12}])
+    p = make_provider(monkeypatch)
+    rows = await p.screener(market="US", filters={"market_cap": {"min": 1e9, "max": 5e12},
+                                                  "price": {"min": 10},
+                                                  "volume": {"max": 1e7},
+                                                  "dividend_yield": {"min": 0.5}},
+                            limit=7)
+    assert rows[0]["symbol"] == "AAPL" and route.called
+    params = respx.calls[0].request.url.params
+    assert params["marketCapMoreThan"] == "1000000000.0"
+    assert params["marketCapLowerThan"] == "5000000000000.0"
+    assert params["priceMoreThan"] == "10" and "priceLowerThan" not in params
+    assert params["volumeLowerThan"] == "10000000.0" and "volumeMoreThan" not in params
+    assert params["dividendMoreThan"] == "0.5"
+    assert params["limit"] == "7" and params["apikey"] == "test-key"
+
+
+async def test_screener_tv_only_filter_is_not_found(monkeypatch):
+    from unified_finance_mcp.errors import NotFound
+    p = make_provider(monkeypatch)
+    with pytest.raises(NotFound) as ei:
+        await p.screener(market="US", filters={"rsi": {"min": 30}})
+    assert "tv-only" in str(ei.value)
+
+
+async def test_screener_non_us_market_is_provider_error(monkeypatch):
+    from unified_finance_mcp.errors import ProviderError
+    p = make_provider(monkeypatch)
+    with pytest.raises(ProviderError):
+        await p.screener(market="HK")
+
+
+@respx.mock
+async def test_screener_no_filters(monkeypatch):
+    monkeypatch.setenv("FINANCE_MCP_MIN_HOST_DELAY", "0")
+    route = respx.get("https://financialmodelingprep.com/stable/company-screener").respond(
+        200, json=[{"symbol": "AAPL"}])
+    p = make_provider(monkeypatch)
+    assert (await p.screener())[0]["symbol"] == "AAPL" and route.called
+    assert respx.calls[0].request.url.params["limit"] == "25"

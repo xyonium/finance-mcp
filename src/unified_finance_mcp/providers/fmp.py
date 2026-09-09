@@ -34,6 +34,10 @@ _REPORT_PATH = {"income": "income-statement", "balance": "balance-sheet-statemen
                 "cashflow": "cash-flow-statement"}
 _EVENTS_PATH = {"earnings": "earnings-calendar", "dividends": "dividends-calendar",
                 "ipo": "ipos-calendar"}
+# tool-layer filter field -> company-screener param prefix. Fields absent here
+# are tv-only (pe_ratio, change_percent, rsi) -> NotFound on use.
+_SCREENER_PREFIX = {"market_cap": "marketCap", "price": "price",
+                    "volume": "volume", "dividend_yield": "dividend"}
 
 
 class FmpProvider(Provider):
@@ -166,3 +170,25 @@ class FmpProvider(Provider):
 
     async def search(self, query: str, limit: int = 10) -> list[dict]:
         return await self._get("search-name", query=query, limit=limit)
+
+    async def screener(self, market: str = "US", filters: dict | None = None,
+                       sort: str = "market_cap", order: str = "desc",
+                       limit: int = 25) -> list[dict]:
+        """Company-screener fallback. US-centric: FMP has no market param here,
+        so any other market is a ProviderError (route_and_call skips fmp then).
+        `sort`/`order` are tv-only (the endpoint has no sort params) and are
+        accepted but ignored — the caller's tv attempt already ordered rows.
+        """
+        if market != "US":
+            raise ProviderError(f"fmp screener is US-only, got market {market!r}")
+        params: dict = {"limit": limit}
+        for field, rng in (filters or {}).items():
+            prefix = _SCREENER_PREFIX.get(field)
+            if prefix is None:
+                raise NotFound(f"fmp: filter field {field!r} is tv-only "
+                               f"(mappable: {sorted(_SCREENER_PREFIX)})")
+            if "min" in rng:
+                params[f"{prefix}MoreThan"] = rng["min"]
+            if "max" in rng:
+                params[f"{prefix}LowerThan"] = rng["max"]
+        return await self._get("company-screener", **params)
