@@ -37,11 +37,13 @@ async def test_get_quote_routes_yahoo_for_egx(monkeypatch):
 async def test_get_quote_bad_symbol_never_raises(monkeypatch):
     # "???bad" does NOT hit the parse-error branch: parse_symbol defaults any
     # unrecognized bare token to market US, so routing runs and every covering
-    # candidate is tried. The provider is stubbed to fail, so this pins the
-    # routing outcome (all candidates failed -> error dict, never raises)
-    # instead of a live upstream 404.
+    # candidate is tried. All env-dependent candidates are stubbed to fail, so
+    # this pins the routing outcome (all candidates failed -> error dict, never
+    # raises) instead of a live upstream 404. futu needs no stub: available()
+    # requires a live OpenD TCP probe (loopback-only, none in test env).
     providers = build_providers(get_settings())
-    providers["yahoo"].quote = AsyncMock(side_effect=NotFound("yahoo: no such symbol"))
+    for name in ("yahoo", "fmp", "alphavantage"):
+        providers[name].quote = AsyncMock(side_effect=NotFound(f"{name}: no such symbol"))
     results = {}
     quote_mod.register(_capture(results), providers, get_settings())
     out = await results["get_quote"](["???bad"])
@@ -71,11 +73,13 @@ async def test_get_history_returns_bars():
 
 
 async def test_get_history_bad_symbol_never_raises():
-    # Same non-parsing input as get_quote: routing runs, the only covering
-    # candidate (yahoo) is stubbed to fail, and the error must surface at the
-    # TOP level (not nested under "data") — the T11-T13 error convention.
+    # Same non-parsing input as get_quote: routing runs, every env-dependent
+    # candidate is stubbed to fail, and the error must surface at the TOP level
+    # (not nested under "data") — the T11-T13 error convention. futu needs no
+    # stub (available() needs a live OpenD probe).
     providers = build_providers(get_settings())
-    providers["yahoo"].history = AsyncMock(side_effect=NotFound("yahoo: no such symbol"))
+    for name in ("yahoo", "fmp", "alphavantage"):
+        providers[name].history = AsyncMock(side_effect=NotFound(f"{name}: no such symbol"))
     results = {}
     history_mod.register(_capture(results), providers, get_settings())
     out = await results["get_history"]("???bad")
