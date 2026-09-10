@@ -1,4 +1,14 @@
-"""Market-aware source routing for unified tools. Never raises."""
+"""Market-aware source routing for unified tools. Never raises.
+
+Never-raises scope (T10 M3 boundary, pinned by tests/test_invariants.py):
+the candidate filter calls `providers[n].available()` / `.covers(market)` for
+`n in chain` are guarded — chain names absent from `providers` are skipped,
+and whatever these two methods raise is caught and folded into the returned
+tool_error dict. Provider method bodies invoked via `call(p)` are NOT in
+scope: exceptions there surface as the "all candidate sources failed"
+tool_error dict. Callers may rely on: a dict is always returned; anything
+outside the call(p) bodies is guarded.
+"""
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable

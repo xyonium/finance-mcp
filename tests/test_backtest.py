@@ -92,8 +92,8 @@ def _all_finite(value) -> bool:
 
 def test_backtest_registered_in_all_modules():
     assert "backtest" in tools_pkg.ALL_MODULES
-    assert len(tools_pkg.ALL_MODULES) == 13
-    assert len(set(tools_pkg.ALL_MODULES)) == 13  # no duplicates
+    assert len(tools_pkg.ALL_MODULES) == 14
+    assert len(set(tools_pkg.ALL_MODULES)) == 14  # no duplicates
 
 
 def test_strategy_map_has_all_nine():
