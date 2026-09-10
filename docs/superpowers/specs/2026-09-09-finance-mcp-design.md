@@ -80,7 +80,7 @@ class Provider(Protocol):
 | alphavantage | AV REST `https://www.alphavantage.co/query?function=...` | `ALPHAVANTAGE_API_KEY` + `ALPHAVANTAGE_BASE_URL` | 美国股票 + 全球外汇/加密；股票基本面仅美国 |
 | marketaux | marketaux REST `https://api.marketaux.com/v1/...` | `MARKETAUX_API_TOKEN` + `MARKETAUX_BASE_URL` | 新闻（按 entity/country 过滤） |
 | futu | `futu-opend-mcp` 挂载 + `futu-api` SDK 内部调用 | 沿用 `FUTU_OPEND_HOST/PORT/ENCRYPT/RSA_KEY` | HK/US/SH/SZ/SG/MY/JP |
-| kimi | Kimi Datasource REST（自描述 meta 源，见 §3.4） | `KIMI_BASE_URL` + `KIMI_ACCESS_TOKEN` | 天眼查企业数据、wind/iFinD A股深度、世行/IMF/OECD/FRED 宏观、SEC EDGAR、S&P Capital IQ、财新/新华财经新闻、gildata 选股 |
+| kimi | Kimi Datasource REST（自描述 meta 源，见 §3.4） | `KIMI_PROXY_URL`（默认，proxy 容器）或 `KIMI_AUTH_FILE`（cliproxy 凭证）或 `KIMI_ACCESS_TOKEN`（直注）+ `KIMI_BASE_URL` | 天眼查企业数据、wind/iFinD A股深度、世行/IMF/OECD/FRED 宏观、SEC EDGAR、S&P Capital IQ、财新/新华财经新闻、gildata 选股 |
 
 **Alpha Vantage 限流怪癖**：限流时返回 HTTP 200 但 body 含 `{"Note": ...}` 或 `{"Information": ...}`。客户端必须识别该标记并映射为 rate-limited 错误（带 hint："日额度耗尽；明天重置，或配置多 key 走 api-key-rotator"）。
 
@@ -118,12 +118,12 @@ X-Msh-Device-Id / X-Msh-Platform / X-Msh-Version / User-Agent: kimi-datasource/<
 - `method="get_stock_realtime_price"`, params `{"ticker"(≤3), "type", "file_path"}` → 快捷行情
 - 已知源：`stock_finance_data yahoo_finance world_bank_open_data tianyancha arxiv scholar yuandian_law wind imf gildata sec_edgar sp_data`（运行时以 describe 实际返回为准；iFinD/财新/新华财经等新源同名接入）
 
-**认证：直读 cliproxy 凭证文件（已验证可行，零改动 CLIProxyAPI）**。官方 changelog 确认 datasource 走 OAuth 凭证（网页 API key 仅覆盖 chat 模型，不能调数据源）。CLIProxyAPI 的 plugin 体系是 translator/provider hooks，不能加任意 HTTP 路由，透传端点方案否决。最终方案：
+**认证（2026-09-10 用户拍板：独立 proxy 容器为默认；凭证文件/直注为回退）**。官方 changelog 确认 datasource 走 OAuth 凭证（网页 API key 仅覆盖 chat 模型，不能调数据源）。CLIProxyAPI 的 plugin 体系是 translator/provider hooks，不能加任意 HTTP 路由，透传端点方案否决。token 来源按优先级：
 
-- `KIMI_AUTH_FILE` 指向 cliproxy 的 kimi 凭证 JSON（如 `/mnt/docker/cliproxy/auths/kimi-*.json`，支持 glob 取第一个 `disabled!=true`）。文件含 `access_token/refresh_token/device_id/expired`，cliproxy 有后台 auto-refresh loop（到期前 5 分钟主动刷新），凭证长期保鲜。
-- 客户端每次调用读文件（mtime 缓存 ~1s），用文件里的 `access_token` + `device_id`（与 cliproxy 同设备身份）。
-- 兜底自刷新：`expired` 临近或上游 401 时，先重读文件一次（cliproxy 可能刚刷新）；仍失效则用公开 client_id（`17e5f671-d194-4dfb-9706-5516cb48c098`，Kimi Code CLI 公开 client）调 `POST https://auth.kimi.com/api/oauth/token`（grant_type=refresh_token）自刷新，flock + tmp+rename 原子写回整个 JSON（保留其他字段）。与 cliproxy 的写冲突概率低，最坏情况用户在 cliproxy 重新登录 kimi。
-- 独立用户（无 cliproxy）：`KIMI_ACCESS_TOKEN` 直接注入（从本人 `~/.kimi-code/credentials/kimi-code.json` 取，README 说明），优先生效，无刷新逻辑。
+- **`KIMI_PROXY_URL`（默认拓扑，用户选定）**：cliproxy stack 新增独立 `kimi-datasource-proxy` 容器（另一项目，不在本 repo），只读挂载 cliproxy auths、复刻 `api.kimi.com/coding/v1/tools` 协议、自己持有并经 cliproxy keeper 刷新凭证。unified-finance-mcp 设 `KIMI_PROXY_URL=http://kimi-datasource-proxy:8788/coding/v1/tools` 指向它，base_url 用该值、**不附 Authorization**（proxy 注入凭证），仍附 X-Msh-* 头。wire 协议与自描述接入与直连完全一致——proxy 仅改 token/base 来源。
+- `KIMI_AUTH_FILE`（回退）：直读 cliproxy 的 kimi 凭证 JSON（如 `/mnt/docker/cliproxy/auths/kimi-*.json`，glob 取第一个 `disabled!=true`）。文件含 `access_token/refresh_token/device_id/expired`；每次调用读文件（mtime 缓存 ~1s），用 `access_token` + `device_id`（与 cliproxy 同设备身份）。
+- 兜底自刷新（仅凭证文件路径）：`expired` 临近或上游 401 时，先重读文件一次（cliproxy 可能刚刷新）；仍失效则用公开 client_id（`17e5f671-d194-4dfb-9706-5516cb48c098`，Kimi Code CLI 公开 client）调 `POST https://auth.kimi.com/api/oauth/token`（grant_type=refresh_token）自刷新，flock + tmp+rename 原子写回整个 JSON（保留其他字段）。proxy 拓扑下刷新由 proxy/cliproxy 负责，本客户端不做。
+- 独立用户（无 cliproxy/proxy）：`KIMI_ACCESS_TOKEN` 直接注入（从本人 `~/.kimi-code/credentials/kimi-code.json` 取，README 说明），无刷新逻辑。
 - 本项目**不做** device-code 登录流程（登录在 cliproxy 已完成）。
 
 **两个上游坑**（插件 SKILL.md 明示）：天眼查查询必须企业**全称**（先调其搜索 API 补全）；多数 API 缺省必须传 `file_path`（本项目自动生成 `/tmp/unified_finance_mcp/<场景>_<uuid>.csv`，并把响应 `files` 落盘到同目录）。
