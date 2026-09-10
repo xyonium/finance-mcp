@@ -5,8 +5,8 @@ the candidate-filter calls `providers[n].available()` / `.covers(market)` are
 NOT wrapped in try/except (candidate list comp and the explicit-source
 guard) — an exception raised by either propagates to the caller. The
 "Never raises" contract therefore holds only on the convention that
-available()/covers() are pure env/set checks that never raise (all registry
-providers comply: no I/O, no side effects). Only `call(p)` bodies are
+available()/covers() never raise (all registry providers comply: no network
+I/O; local cached probe/file read, never raises). Only `call(p)` bodies are
 caught and folded into the returned tool_error dict ("all candidate sources
 failed" / explicit-source tool_error). Chain names absent from `providers`
 are skipped, and unknown/explicit-source configuration problems return

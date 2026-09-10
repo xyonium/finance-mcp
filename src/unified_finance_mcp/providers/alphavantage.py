@@ -168,6 +168,11 @@ class AlphaVantageProvider(Provider):
                 url, params={**params, "apikey": self._apikey})
         except UpstreamError as e:
             raise UpstreamError(scrub(f"alphavantage: {e}", self._apikey)) from e
+        except ValueError as e:
+            # A 200 with a non-JSON body (HTML error page from a rotator/gateway)
+            # must not escape as a raw JSONDecodeError into the tools layer.
+            raise UpstreamError(f"alphavantage: non-JSON body from "
+                                f"{scrub(url, self._apikey)}") from e
         if not isinstance(data, dict):
             raise UpstreamError(f"alphavantage: unexpected {type(data).__name__} body "
                                 f"from {scrub(url, self._apikey)}")

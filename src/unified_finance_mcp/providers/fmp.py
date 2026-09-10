@@ -84,6 +84,11 @@ class FmpProvider(Provider):
             if "HTTP 402" in str(e):  # FMP quota exhausted
                 raise RateLimited("fmp: HTTP 402 quota exhausted") from e
             raise
+        except ValueError as e:
+            # A 200 with a non-JSON body (HTML error page from a rotator/gateway)
+            # must not escape as a raw JSONDecodeError into the tools layer.
+            raise UpstreamError(f"fmp: non-JSON body from "
+                                f"{scrub(url, self._apikey)}") from e
         if isinstance(data, list) and not data and not empty_ok:
             raise NotFound(f"fmp: empty result from {scrub(url, self._apikey)}")
         return data

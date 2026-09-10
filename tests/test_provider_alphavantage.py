@@ -10,7 +10,12 @@ import pytest
 import respx
 
 from unified_finance_mcp.config import DEFAULT_AV_BASE_URL, get_settings
-from unified_finance_mcp.errors import NotFound, ProviderError, RateLimited
+from unified_finance_mcp.errors import (
+    NotFound,
+    ProviderError,
+    RateLimited,
+    UpstreamError,
+)
 from unified_finance_mcp.providers.alphavantage import (
     ECONOMIC_INDICATORS,
     AlphaVantageProvider,
@@ -51,6 +56,19 @@ async def test_information_body_is_rate_limited(monkeypatch):
     p = make_provider(monkeypatch)
     with pytest.raises(RateLimited):
         await p.economic("GDP")
+
+
+@respx.mock
+async def test_non_json_200_maps_to_upstream_error(monkeypatch):
+    """A 200 with an HTML body (rotator/gateway error page) must become an
+    UpstreamError with kind=unavailable, never a raw JSONDecodeError."""
+    respx.get(BASE).respond(200, text="<html>bad gateway</html>")
+    p = make_provider(monkeypatch)
+    with pytest.raises(UpstreamError) as ei:
+        await p.quote(parse_symbol("AAPL"))
+    assert ei.value.kind == "unavailable"
+    assert "non-JSON" in str(ei.value)
+    assert "test-key" not in str(ei.value)  # no key leak, no raw decode error
 
 
 @respx.mock

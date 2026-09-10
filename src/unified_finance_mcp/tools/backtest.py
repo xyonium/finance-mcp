@@ -232,7 +232,6 @@ async def quant_backtest(action: str = "help", symbol: str | None = None,
         return tool_error("capital/commission_pct/slippage_pct must be numbers",
                           hint="capital: 初始资金 float；commission_pct/slippage_pct: "
                                "每边百分比 0..100")
-    assert capital is not None and commission_pct is not None and slippage_pct is not None
 
     if action == "run":
         if _symbol_err(symbol):

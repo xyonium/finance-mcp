@@ -130,6 +130,25 @@ async def test_tv_scan_top_gainers_egx_end_to_end(monkeypatch):
     assert captured["screener"] == "egypt"
 
 
+async def test_tv_scan_defaults_resolve_nasdaq_symbols(monkeypatch):
+    """Final-fix: tv_scan's shipped default exchange must resolve symbols.
+    The old "US" default hit no vendored coinlist file (dead path)."""
+    captured = {"symbols": [], "screener": None}
+
+    def fake_gma(screener, interval, symbols):
+        captured["screener"] = screener
+        captured["symbols"] += list(symbols)
+        return {s: _analysis_row() for s in symbols}
+
+    monkeypatch.setattr("tradingview_ta.get_multiple_analysis", fake_gma)
+    out = await containers_mod.tv_scan("top_gainers", limit=5)
+    assert "error" not in out
+    assert len(out["data"]) == 5
+    assert captured["symbols"] and all(
+        s.startswith("NASDAQ:") for s in captured["symbols"][:10])
+    assert captured["screener"] == "america"
+
+
 class FakeEndToEndQuery:
     """Captures set_markets/limit and returns a candle-pattern-detectable row."""
 

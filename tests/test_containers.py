@@ -232,7 +232,7 @@ async def test_tv_scan_invalid_exchange_clamped_to_default(monkeypatch):
     monkeypatch.setattr("unified_finance_mcp.tools._tv_scanners.top_gainers", fake)
     out = await containers_mod.tv_scan("top_gainers", exchange="NOT_A_VENUE")
     assert out == {"data": []}
-    assert captured["exchange"] == "US"  # sanitize_exchange semantics: illegal -> default
+    assert captured["exchange"] == "nasdaq"  # sanitize_exchange: illegal -> default
 
 
 async def test_tv_scan_invalid_timeframe_clamped_to_default(monkeypatch):
@@ -248,6 +248,20 @@ async def test_tv_scan_invalid_timeframe_clamped_to_default(monkeypatch):
     out = await containers_mod.tv_scan("top_gainers", timeframe="7h")
     assert out == {"data": []}
     assert captured["timeframe"] == "1D"  # sanitize_timeframe default
+
+
+@pytest.mark.parametrize("tf,expected", [
+    ("1m", "1m"),      # minute, not month (project vocabulary trap)
+    ("5m", "5m"), ("15m", "15m"), ("1h", "1h"), ("4h", "4h"),
+    ("1d", "1D"), ("1wk", "1W"), ("1mo", "1M"),
+    ("1D", "1D"),                # aliases lookup is case-insensitive
+    ("1w", "1D"), ("1W", "1D"),  # legacy "1w" retired; "1wk" is the spelling
+    ("3m", "1D"),                # unknown -> default, no silent month mapping
+])
+def test_sanitize_timeframe_vocabulary(tf, expected):
+    from unified_finance_mcp.tools import containers as containers_mod
+
+    assert containers_mod.sanitize_timeframe(tf) == expected
 
 
 # ── tv_analyze ──────────────────────────────────────────────────────────────
@@ -548,6 +562,21 @@ def test_register_mounts_three_container_tools():
     assert {"tv_scan", "tv_analyze", "egx_market"} <= names
 
 
+def test_tv_scan_schema_default_exchange_is_working_venue():
+    """The registered MCP schema default must be a venue with a vendored
+    symbol list ("nasdaq"), not the dead "US" path."""
+    from mcp.server.fastmcp import FastMCP
+
+    from unified_finance_mcp.config import get_settings
+    from unified_finance_mcp.tools import containers as containers_mod
+
+    mcp = FastMCP("t14-test")
+    containers_mod.register(mcp, None, get_settings())
+    tv_scan = {t.name: t for t in mcp._tool_manager.list_tools()}["tv_scan"]
+    props = tv_scan.parameters["properties"]
+    assert props["exchange"].get("default") == "nasdaq"
+
+
 # ── _tv_math pure helpers (no network by construction) ─────────────────────
 
 def test_compute_metrics_full_indicator_dict():
@@ -798,13 +827,13 @@ async def test_egx_market_lookback_sanitized(monkeypatch):
 
 
 @pytest.mark.parametrize("kwargs,expected_ex,expected_tf", [
-    # tv_scan's defaults are the bare "US"/"1D" (only str inputs are
+    # tv_scan's defaults are the bare "nasdaq"/"1D" (only str inputs are
     # lowercased/aliased by the sanitizers).
-    ({"exchange": 5}, "US", "1D"),
-    ({"exchange": ["egx"]}, "US", "1D"),
-    ({"timeframe": 42}, "US", "1D"),
-    ({"timeframe": None}, "US", "1D"),
-    ({"timeframe": ["1d"]}, "US", "1D"),
+    ({"exchange": 5}, "nasdaq", "1D"),
+    ({"exchange": ["egx"]}, "nasdaq", "1D"),
+    ({"timeframe": 42}, "nasdaq", "1D"),
+    ({"timeframe": None}, "nasdaq", "1D"),
+    ({"timeframe": ["1d"]}, "nasdaq", "1D"),
 ])
 async def test_tv_scan_sanitizers_fall_back_on_garbage(monkeypatch, kwargs,
                                                    expected_ex, expected_tf):

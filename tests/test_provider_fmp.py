@@ -211,6 +211,21 @@ async def test_empty_result_maps_to_not_found(monkeypatch):
 
 
 @respx.mock
+async def test_non_json_200_maps_to_upstream_error(monkeypatch):
+    """A 200 with an HTML body (rotator/gateway error page) must become an
+    UpstreamError with kind=unavailable, never a raw JSONDecodeError."""
+    from unified_finance_mcp.errors import UpstreamError
+    respx.get("https://financialmodelingprep.com/stable/quote").respond(
+        200, text="<html>bad gateway</html>")
+    p = make_provider(monkeypatch)
+    with pytest.raises(UpstreamError) as ei:
+        await p.quote(parse_symbol("AAPL"))
+    assert ei.value.kind == "unavailable"
+    assert "non-JSON" in str(ei.value)
+    assert "test-key" not in str(ei.value)  # no key leak, no raw decode error
+
+
+@respx.mock
 async def test_error_messages_never_leak_the_key(monkeypatch):
     from unified_finance_mcp.errors import NotFound
     respx.get("https://financialmodelingprep.com/stable/quote").respond(200, json=[])

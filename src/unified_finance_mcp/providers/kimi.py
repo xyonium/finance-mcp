@@ -22,6 +22,7 @@ import fcntl
 import json
 import os
 import re
+import stat
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -74,10 +75,12 @@ def resolve_kimi_auth_file(settings: Settings) -> Path | None:
         return None
     candidates = sorted(_glob.glob(pat)) if any(c in pat for c in "*?[") else [pat]
     for c in candidates:
+        if not Path(c).is_file():  # a glob matching a directory must be skipped
+            continue
         try:
             if not json.loads(Path(c).read_text()).get("disabled"):
                 return Path(c)
-        except (OSError, json.JSONDecodeError):
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
             continue
     return None
 
@@ -94,7 +97,13 @@ class _KimiCredentials:
         except OSError as e:
             raise AuthError(f"kimi auth file unreadable: {self.path}") from e
         if mtime != self._mtime:
-            self._data = json.loads(self.path.read_text())
+            try:
+                self._data = json.loads(self.path.read_text())
+            except (OSError, UnicodeDecodeError, ValueError) as e:
+                # Corrupt auth JSON must become AuthError, never escape as a
+                # UnicodeDecodeError/JSONDecodeError (a ValueError) into the
+                # call body.
+                raise AuthError(f"kimi auth file corrupt: {self.path}") from e
             self._mtime = mtime
         return self._data
 
@@ -144,6 +153,7 @@ class _KimiCredentials:
                              "last_refresh": datetime.now(timezone.utc).isoformat(),
                              "timestamp": int(time.time())})
                 tmp_path.write_text(json.dumps(data))
+                os.chmod(tmp_path, stat.S_IMODE(self.path.stat().st_mode))
                 os.replace(tmp_path, self.path)
                 fcntl.flock(fh, fcntl.LOCK_UN)
             self._mtime = 0.0
@@ -265,7 +275,13 @@ class KimiProvider(Provider):
             self._creds = None
             body = await request(await self._headers())
         if isinstance(body, dict) and body.get("is_success") is False:
-            raise UpstreamError(_extract_user_text(body.get("error")) or str(body)[:200])
+            # Scrub the in-use bearer (direct token or auth-file creds); the
+            # proxy path sends none. scrub() ignores empty secrets.
+            bearer = (self.settings.kimi_access_token
+                      or (self._creds._data.get("access_token")
+                          if self._creds else None))
+            raise UpstreamError(scrub(
+                _extract_user_text(body.get("error")) or str(body)[:200], bearer))
         return body if isinstance(body, dict) else {"raw": body}
 
     async def describe(self, source: str) -> str:

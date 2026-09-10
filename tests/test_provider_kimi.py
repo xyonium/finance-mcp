@@ -229,6 +229,71 @@ def test_available_via_auth_file(monkeypatch, tmp_path):
     assert not KimiProvider(get_settings()).available()
 
 
+# ── F1 regressions: corrupt auth files must never raise out of available() ──
+
+def test_available_binary_auth_file_returns_false(monkeypatch, tmp_path):
+    """A corrupt (binary) auth file must not raise UnicodeDecodeError."""
+    for v in ("KIMI_PROXY_URL", "KIMI_ACCESS_TOKEN"):
+        monkeypatch.delenv(v, raising=False)
+    f = tmp_path / "kimi-1.json"
+    f.write_bytes(b"\xff\xfe\x00\x01")
+    monkeypatch.setenv("KIMI_AUTH_FILE", str(f))
+    assert KimiProvider(get_settings()).available() is False  # no raise
+
+
+def test_available_glob_matching_directory_returns_false(monkeypatch, tmp_path):
+    """A glob candidate that is a directory must be skipped, not read."""
+    for v in ("KIMI_PROXY_URL", "KIMI_ACCESS_TOKEN"):
+        monkeypatch.delenv(v, raising=False)
+    (tmp_path / "kimi-dir").mkdir()
+    monkeypatch.setenv("KIMI_AUTH_FILE", str(tmp_path / "kimi-*"))
+    assert KimiProvider(get_settings()).available() is False  # no raise
+
+
+async def test_route_and_call_through_kimi_never_raises_on_corrupt_auth(
+        monkeypatch, tmp_path):
+    """The candidate filter calls available() unguarded: a corrupt auth file
+    must degrade to 'not available', not propagate a decode error."""
+    from unified_finance_mcp.tools._routing import route_and_call
+
+    for v in ("KIMI_PROXY_URL", "KIMI_ACCESS_TOKEN"):
+        monkeypatch.delenv(v, raising=False)
+    monkeypatch.setenv("KIMI_AUTH_FILE", str(tmp_path / "kimi-*.json"))
+    (tmp_path / "kimi-1.json").write_bytes(b"\x00\xffbinary")
+    providers = {"kimi": KimiProvider(get_settings())}
+    out = await route_and_call(market="US", chain=["kimi"], providers=providers,
+                               call=lambda p: p.economic("GDP"))
+    assert isinstance(out, dict) and "error" in out  # tool_error, no raise
+
+
+@respx.mock
+async def test_corrupt_auth_file_after_resolution_is_auth_error(monkeypatch,
+                                                                tmp_path):
+    """_reload_if_changed on a file that turns corrupt after resolution must
+    raise AuthError (kind auth), never UnicodeDecodeError/JSONDecodeError."""
+    for v in ("KIMI_PROXY_URL", "KIMI_ACCESS_TOKEN"):
+        monkeypatch.delenv(v, raising=False)
+    f = _write_auth(tmp_path / "kimi-1.json")
+    monkeypatch.setenv("KIMI_AUTH_FILE", str(f))
+    p = KimiProvider(get_settings())
+    assert p.available()  # resolves fine now
+    # Pre-create the credentials object so _headers() skips re-resolution
+    # and _reload_if_changed() is the code path that hits the corrupt file.
+    from unified_finance_mcp.providers.kimi import _KimiCredentials
+
+    p._creds = _KimiCredentials(f)
+    f.write_bytes(b"\xff\xfe\x00")  # corrupted before the first read
+    with pytest.raises(AuthError) as exc:
+        await p._headers()
+    assert exc.value.kind == "auth"
+    assert "corrupt" in str(exc.value)
+    # The full invoke path (with its one re-read retry) must also surface
+    # only AuthError — never a raw UnicodeDecodeError/JSONDecodeError.
+    with pytest.raises(AuthError) as exc2:
+        await p.describe("wind")
+    assert exc2.value.kind == "auth"
+
+
 @respx.mock
 async def test_token_from_auth_file_used_with_same_device_id(monkeypatch, tmp_path):
     for v in ("KIMI_PROXY_URL", "KIMI_ACCESS_TOKEN"):
@@ -264,6 +329,44 @@ async def test_self_refresh_writes_back_when_expired(monkeypatch, tmp_path):
     saved = json.loads(f.read_text())
     assert saved["access_token"] == "new-at" and saved["refresh_token"] == "new-rt"
     assert saved["device_id"] == "dev-1"  # other fields preserved
+
+
+@respx.mock
+async def test_write_back_preserves_file_mode(monkeypatch, tmp_path):
+    """F3 fix: atomic write-back must keep the original file mode (0600) —
+    a live-token credential file must never be widened to umask-default."""
+    import os
+    import stat
+    monkeypatch.setattr(time, "sleep", lambda _s: None)
+    for v in ("KIMI_PROXY_URL", "KIMI_ACCESS_TOKEN"):
+        monkeypatch.delenv(v, raising=False)
+    f = _write_auth(tmp_path / "kimi-1.json", expired="2020-01-01T00:00:00Z")
+    os.chmod(f, 0o600)
+    monkeypatch.setenv("KIMI_AUTH_FILE", str(f))
+    respx.post("https://auth.kimi.com/api/oauth/token").respond(200, json={
+        "access_token": "new-at", "refresh_token": "new-rt", "expires_in": 900})
+    respx.post(DEFAULT_KIMI_BASE_URL).respond(200, json=_ok("ok"))
+    p = KimiProvider(get_settings())
+    await p.describe("wind")
+    assert stat.S_IMODE(f.stat().st_mode) == 0o600
+
+
+@respx.mock
+async def test_is_success_false_error_scrubs_bearer(monkeypatch):
+    """F2 fix: a 200-body error echoing the bearer must not leak the token."""
+    for v in ("KIMI_PROXY_URL", "KIMI_AUTH_FILE"):
+        monkeypatch.delenv(v, raising=False)
+    monkeypatch.setenv("KIMI_ACCESS_TOKEN", "tok-super-secret")
+    respx.post(DEFAULT_KIMI_BASE_URL).respond(200, json={
+        "is_success": False,
+        "error": {"user": [{"type": "text",
+                            "text": "bad token tok-super-secret"}]}})
+    p = KimiProvider(get_settings())
+    with pytest.raises(UpstreamError) as exc:
+        await p.call("tianyancha", "nope", {})
+    msg = str(exc.value)
+    assert "tok-super-secret" not in msg
+    assert "***" in msg  # the scrub actually replaced something
 
 
 @respx.mock

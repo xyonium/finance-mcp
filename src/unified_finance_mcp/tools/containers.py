@@ -27,8 +27,10 @@ from . import _tv_scanners as _tv
 from ._sanitize import sanitize
 
 # Project interval vocabulary -> reference timeframe codes (sanitize_timeframe).
-_TIMEFRAME_ALIASES = {"5m": "5m", "15m": "15m", "1h": "1h", "4h": "4h",
-                      "1d": "1D", "1w": "1W", "1m": "1M"}
+# Matches the provider's _INTERVAL/_CODE_BY_PROJECT_INTERVAL vocabulary:
+# "1m" is 1 MINUTE here (not month), and "1wk"/"1mo" are explicit.
+_TIMEFRAME_ALIASES = {"1m": "1m", "5m": "5m", "15m": "15m", "1h": "1h",
+                      "4h": "4h", "1d": "1D", "1wk": "1W", "1mo": "1M"}
 
 # Venues the reference accepts as `exchange` values (sanitize_exchange legal
 # set): stock exchanges, crypto exchanges, plus forex/cfd TA-only venues.
@@ -126,18 +128,22 @@ _TV_SCAN_ROUTES: dict[str, Callable[[dict], object]] = {
 }
 
 
-async def tv_scan(action: str, exchange: str = "US", timeframe: str = "1d",
+async def tv_scan(action: str, exchange: str = "nasdaq", timeframe: str = "1d",
                   limit: int = 25, **kwargs) -> dict:
     """Scan a whole TradingView exchange by `action`.
 
     Actions: top_gainers, top_losers, bollinger_squeeze, rating,
     consecutive_candles, volume_breakout, smart_volume.
+
+    Default exchange is "nasdaq": the vendored coinlist has no US list
+    (files are named per exchange), so the historical "US" default was a
+    guaranteed error. Garbage-in still clamps via sanitize_exchange.
     """
     if not _known_action(_TV_SCAN_ROUTES, action):
         return tool_error(f"unknown action {action!r}",
                           hint=f"可用 action: {sorted(_TV_SCAN_ROUTES)}")
     params = {
-        "exchange": sanitize_exchange(exchange, "US"),
+        "exchange": sanitize_exchange(exchange, "nasdaq"),
         "timeframe": sanitize_timeframe(timeframe, "1D"),
         "limit": _clamp_limit(limit, 1, 100),
         "bbw_threshold": _clamp_float(kwargs.get("bbw_threshold"), 0.0, 10.0, 0.04),
@@ -316,7 +322,7 @@ def _sanitize_lookback(lookback) -> str:
 
 def register(mcp, providers, settings) -> None:
     @mcp.tool(name="tv_scan")
-    async def tv_scan_tool(action: str, exchange: str = "US", timeframe: str = "1d",
+    async def tv_scan_tool(action: str, exchange: str = "nasdaq", timeframe: str = "1d",
                            limit: int = 25, **kwargs) -> dict:
         """Scan a whole TradingView exchange by action (see tv_scan docstring)."""
         return await tv_scan(action, exchange, timeframe, limit, **kwargs)

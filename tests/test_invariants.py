@@ -10,7 +10,8 @@ These pin the contract between build_mcp and the tool modules:
 - INSTRUCTIONS mentions the full final surface (incl. get_service_status,
   get_company_risk_cn and the futu mount).
 
-Routing docstring note (T10 M3 candidate, code unchanged): tools/_routing.py
+Routing docstring note (T10 M3 candidate; final-fix tightened the convention
+line to "no network I/O; local cached probe/file read"): tools/_routing.py
 documents route_and_call as "Never raises." The exact never-raises scope is
 bounded by the `available()`/`covers()` candidate-filter calls in
 route_and_call and by `chain` entries that do not exist in `providers` —
