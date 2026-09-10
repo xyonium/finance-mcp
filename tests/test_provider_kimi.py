@@ -294,6 +294,77 @@ async def test_corrupt_auth_file_after_resolution_is_auth_error(monkeypatch,
     assert exc2.value.kind == "auth"
 
 
+# ── R2 regressions: valid-JSON non-dict auth files must never raise ─────────
+
+_NON_DICT_PAYLOADS = [
+    pytest.param("[1,2,3]", id="list"),
+    pytest.param('"hi"', id="str"),
+    pytest.param("42", id="int"),
+    pytest.param("null", id="null"),
+]
+
+
+@pytest.mark.parametrize("raw", _NON_DICT_PAYLOADS)
+def test_available_non_dict_json_auth_file_returns_false(monkeypatch, tmp_path,
+                                                         raw):
+    """Valid JSON that is not an object must be skipped, never raise."""
+    from unified_finance_mcp.providers.kimi import resolve_kimi_auth_file
+
+    for v in ("KIMI_PROXY_URL", "KIMI_ACCESS_TOKEN"):
+        monkeypatch.delenv(v, raising=False)
+    f = tmp_path / "kimi-1.json"
+    f.write_text(raw)
+    monkeypatch.setenv("KIMI_AUTH_FILE", str(f))
+    settings = get_settings()
+    assert resolve_kimi_auth_file(settings) is None  # no raise
+    assert KimiProvider(settings).available() is False  # no raise
+
+
+@pytest.mark.parametrize("raw", _NON_DICT_PAYLOADS)
+async def test_route_and_call_through_kimi_never_raises_on_non_dict_json(
+        monkeypatch, tmp_path, raw):
+    """route_and_call's candidate filter calls available() unguarded: a
+    non-dict JSON auth file must degrade to 'not available', not raise."""
+    from unified_finance_mcp.tools._routing import route_and_call
+
+    for v in ("KIMI_PROXY_URL", "KIMI_ACCESS_TOKEN"):
+        monkeypatch.delenv(v, raising=False)
+    monkeypatch.setenv("KIMI_AUTH_FILE", str(tmp_path / "kimi-*.json"))
+    (tmp_path / "kimi-1.json").write_text(raw)
+    providers = {"kimi": KimiProvider(get_settings())}
+    out = await route_and_call(market="US", chain=["kimi"], providers=providers,
+                               call=lambda p: p.economic("GDP"))
+    assert isinstance(out, dict) and "error" in out  # tool_error, no raise
+
+
+@respx.mock
+async def test_non_dict_json_after_resolution_is_auth_error(monkeypatch,
+                                                            tmp_path):
+    """_reload_if_changed on a file that turns into non-dict JSON after
+    resolution must raise AuthError (kind auth), never AttributeError."""
+    for v in ("KIMI_PROXY_URL", "KIMI_ACCESS_TOKEN"):
+        monkeypatch.delenv(v, raising=False)
+    f = _write_auth(tmp_path / "kimi-1.json")
+    monkeypatch.setenv("KIMI_AUTH_FILE", str(f))
+    p = KimiProvider(get_settings())
+    assert p.available()  # resolves fine now
+    # Pre-create the credentials object so _headers() skips re-resolution
+    # and _reload_if_changed() is the code path that hits the non-dict file.
+    from unified_finance_mcp.providers.kimi import _KimiCredentials
+
+    p._creds = _KimiCredentials(f)
+    f.write_text("[1,2,3]")
+    with pytest.raises(AuthError) as exc:
+        await p._headers()
+    assert exc.value.kind == "auth"
+    assert "corrupt" in str(exc.value)
+    # The full invoke path (with its one re-read retry) must also surface
+    # only AuthError — never a raw AttributeError.
+    with pytest.raises(AuthError) as exc2:
+        await p.describe("wind")
+    assert exc2.value.kind == "auth"
+
+
 @respx.mock
 async def test_token_from_auth_file_used_with_same_device_id(monkeypatch, tmp_path):
     for v in ("KIMI_PROXY_URL", "KIMI_ACCESS_TOKEN"):

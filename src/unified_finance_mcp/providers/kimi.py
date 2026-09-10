@@ -78,10 +78,11 @@ def resolve_kimi_auth_file(settings: Settings) -> Path | None:
         if not Path(c).is_file():  # a glob matching a directory must be skipped
             continue
         try:
-            if not json.loads(Path(c).read_text()).get("disabled"):
-                return Path(c)
+            data = json.loads(Path(c).read_text())
         except (OSError, UnicodeDecodeError, json.JSONDecodeError):
             continue
+        if isinstance(data, dict) and not data.get("disabled"):
+            return Path(c)
     return None
 
 
@@ -104,6 +105,11 @@ class _KimiCredentials:
                 # UnicodeDecodeError/JSONDecodeError (a ValueError) into the
                 # call body.
                 raise AuthError(f"kimi auth file corrupt: {self.path}") from e
+            if not isinstance(self._data, dict):
+                # Valid JSON but not an object ([1,2,3], "hi", 42, null):
+                # consumers access .get() on it, so degrade to AuthError
+                # instead of an AttributeError mid-call.
+                raise AuthError(f"kimi auth file corrupt: {self.path}")
             self._mtime = mtime
         return self._data
 
