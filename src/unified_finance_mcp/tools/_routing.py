@@ -1,13 +1,16 @@
 """Market-aware source routing for unified tools. Never raises.
 
 Never-raises scope (T10 M3 boundary, pinned by tests/test_invariants.py):
-the candidate filter calls `providers[n].available()` / `.covers(market)` for
-`n in chain` are guarded — chain names absent from `providers` are skipped,
-and whatever these two methods raise is caught and folded into the returned
-tool_error dict. Provider method bodies invoked via `call(p)` are NOT in
-scope: exceptions there surface as the "all candidate sources failed"
-tool_error dict. Callers may rely on: a dict is always returned; anything
-outside the call(p) bodies is guarded.
+the candidate-filter calls `providers[n].available()` / `.covers(market)` are
+NOT wrapped in try/except (candidate list comp and the explicit-source
+guard) — an exception raised by either propagates to the caller. The
+"Never raises" contract therefore holds only on the convention that
+available()/covers() are pure env/set checks that never raise (all registry
+providers comply: no I/O, no side effects). Only `call(p)` bodies are
+caught and folded into the returned tool_error dict ("all candidate sources
+failed" / explicit-source tool_error). Chain names absent from `providers`
+are skipped, and unknown/explicit-source configuration problems return
+tool_error dicts.
 """
 from __future__ import annotations
 

@@ -102,7 +102,8 @@ def _kimi_auth(settings) -> dict:
     return {"source": "none"}
 
 
-def _provider_entry(name: str, provider: Any, settings, secrets: tuple) -> dict:
+def _provider_entry(name: str, provider: Any, settings, secrets: tuple,
+                    futu_enabled: bool = True) -> dict:
     entry: dict = {"available": False, "covers": []}
     key_cfg = _KEY_BASES.get(name)
     if key_cfg:
@@ -115,6 +116,11 @@ def _provider_entry(name: str, provider: Any, settings, secrets: tuple) -> dict:
             entry["base_url"] = scrub(str(getattr(settings, base_attr)), *secrets)
         else:
             entry["key"] = "missing"
+    if name == "futu" and not futu_enabled:
+        # Config choice, NOT a deploy error: no probe at all (fast/read-only).
+        entry["available"] = False
+        entry["issue"] = "disabled by config"
+        return entry
     try:
         entry["available"] = bool(provider.available())
     except Exception as e:  # noqa: BLE001 - status never raises
@@ -183,7 +189,8 @@ async def get_service_status(_providers: dict | None = None) -> dict:
     settings = get_settings()
     providers = _providers if _providers is not None else build_providers(settings)
     secrets = tuple(getattr(settings, a, "") for a in _SECRET_ATTRS)
-    entries = {name: _provider_entry(name, p, settings, secrets)
+    entries = {name: _provider_entry(name, p, settings, secrets,
+                                     settings.futu_enabled)
                for name, p in providers.items()}
     if settings.futu_enabled:
         try:

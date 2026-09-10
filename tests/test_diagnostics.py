@@ -223,12 +223,31 @@ async def test_deploy_misconfiguration_classified(monkeypatch):
 
 
 async def test_futu_disabled_skips_probe(monkeypatch):
+    """FINANCE_MCP_FUTU=0 is a config choice, not a deploy error: the futu
+    provider's available() must NOT be called (no TCP probe, fast/read-only)
+    and the classification must be config-disable, not deploy-error."""
     _mock_kimi(monkeypatch, None)
     monkeypatch.setenv("FINANCE_MCP_FUTU", "0")
+    calls = []
+    real_available = build_providers(get_settings())["futu"].available
+    monkeypatch.setattr(diagnostics, "build_providers",
+                        lambda s: _providers_with_futu_avail_spy(monkeypatch, calls,
+                                                                real_available))
     out = await _register()()
+    assert calls == []  # available() never invoked while futu is disabled
     assert out["futu_opend"]["reachable"] is None
     assert out["futu_opend"]["mounted"] == 0
     assert out["tools"]["futu_mounted"] == 0
+    entry = out["providers"]["futu"]
+    assert entry["available"] is False
+    assert entry["issue"] == "disabled by config"  # not deploy-misconfiguration
+
+
+def _providers_with_futu_avail_spy(monkeypatch, calls, real_available):
+    """Fresh providers whose futu.available records each invocation."""
+    providers = build_providers(get_settings())
+    providers["futu"].available = lambda: calls.append(1) or real_available()
+    return providers
 
 
 # ── never raises + no secrets ───────────────────────────────────────────────

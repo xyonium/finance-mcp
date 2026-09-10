@@ -93,17 +93,20 @@ def test_instructions_cover_final_surface():
     for name in EXPECTED_UNIFIED:
         assert name in INSTRUCTIONS
     for marker in ("futu_", "get_snapshot", "action='help'",
-                   "action='list'", "action='describe'", "action='call'"):
+                   "action='list'", "action='describe'", "action='call'",
+                   "vary per tool"):
         assert marker in INSTRUCTIONS, marker
 
 
 def test_instructions_reference_routing_note_docstring():
     """The T10 M3 boundary note lives in the routing module docstring
-    (code unchanged)."""
+    (code unchanged). The true boundary — available()/covers() candidate
+    filters NOT wrapped — is pinned so it can never be written inverted."""
     doc = routing.__doc__ or ""
     assert "Never raises" in doc
     assert "available()" in doc
     assert "covers(market)" in doc
+    assert "NOT wrapped" in doc  # real boundary: filter raises propagate
 
 
 def test_build_mcp_and_futu_import_resolve_no_dns(monkeypatch):
