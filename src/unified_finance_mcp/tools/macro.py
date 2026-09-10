@@ -1,10 +1,12 @@
-"""get_economic_data: macro series from Alpha Vantage (v1 chain: av only).
+"""get_economic_data: macro series, kimi datasource first (T18 ruling 6).
 
 `indicator` is case-insensitive and validated against the canonical
 alphavantage.ECONOMIC_INDICATORS keys (GDP, CPI, INFLATION, UNEMPLOYMENT,
 FEDERAL_FUNDS_RATE, TREASURY_YIELD_10Y, RETAIL_SALES, NONFARM_PAYROLL).
-Symbol-free by nature: never gated on market (T13 brief; a kimi macro chain
-arrives in T18).
+Symbol-free by nature: never gated on market (T13 brief). The chain is
+kimi-first: kimi.economic only invokes the datasource when its describe()
+succeeds AND a matching api shows up in the doc — otherwise NotFound falls
+back to alphavantage.
 """
 from __future__ import annotations
 
@@ -12,7 +14,7 @@ from ..errors import tool_error
 from ..providers.alphavantage import ECONOMIC_INDICATORS
 from ._routing import route_and_call
 
-CHAIN = ["alphavantage"]
+CHAIN = ["kimi", "alphavantage"]
 
 
 def register(mcp, providers, settings) -> None:
@@ -22,7 +24,7 @@ def register(mcp, providers, settings) -> None:
 
         `indicator` is one of GDP | CPI | INFLATION | UNEMPLOYMENT |
         FEDERAL_FUNDS_RATE | TREASURY_YIELD_10Y | RETAIL_SALES |
-        NONFARM_PAYROLL (case-insensitive). `source` may be auto |
+        NONFARM_PAYROLL (case-insensitive). `source` may be auto | kimi |
         alphavantage. Returns {"data": [point, ...]} on success, or the
         routing error dict at the top level on failure — callers check
         `"error" in out`.

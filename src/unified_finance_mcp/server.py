@@ -25,7 +25,9 @@ INSTRUCTIONS = (
     "HK/CN/US depth from Futu OpenD. tv_scan/tv_analyze/egx_market/futures_market "
     "are TradingView scanner containers selected by `action`. quant_backtest runs "
     "strategy backtests; call it with action='help' for its full parameter guide. "
-    "get_service_status reports which sources are configured."
+    "get_company_risk_cn profiles Chinese companies (tianyancha via kimi); "
+    "kimi_datasource gives direct self-describing access to deep datasources "
+    "(list/describe/call). get_service_status reports which sources are configured."
 )
 
 

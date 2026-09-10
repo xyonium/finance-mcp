@@ -102,3 +102,64 @@ class PoliteClient:
                 raise UpstreamError(f"HTTP {resp.status_code} from {host}")
             return resp.text
         raise last if last is not None else UpstreamError(f"request to {host} failed")
+
+    async def post_json(self, url: str, json_body: dict,
+                        headers: dict | None = None) -> Any:
+        """POST a JSON body and decode the JSON response.
+
+        Same pacing / Retry-After / backoff / error discipline as get_json.
+        Errors carry the host only — callers must scrub any secrets from the
+        message (errors.scrub) before surfacing.
+        """
+        host = urlparse(url).netloc
+        last: Exception | None = None
+        for attempt in range(self._max_retries + 1):
+            await self._pace(host)
+            try:
+                resp = await self._client.post(url, json=json_body, headers=headers)
+            except httpx.HTTPError as e:
+                last = UpstreamError(f"network error from {host}: {e}")
+                await asyncio.sleep(0.5 * (2 ** attempt))
+                continue
+            if resp.status_code in (429, 503):
+                last = RateLimited(f"HTTP {resp.status_code} from {host}")
+                await asyncio.sleep(self._retry_after(resp, attempt))
+                continue
+            if resp.status_code in (401, 403):
+                raise AuthError(f"HTTP {resp.status_code} from {host}")
+            if resp.status_code == 404:
+                raise NotFound(f"HTTP 404 from {host}")
+            if resp.status_code >= 400:
+                raise UpstreamError(f"HTTP {resp.status_code} from {host}")
+            return resp.json()
+        raise last if last is not None else UpstreamError(f"request to {host} failed")
+
+    async def post_form(self, url: str, fields: dict,
+                        headers: dict | None = None) -> Any:
+        """POST urlencoded form fields and decode the JSON response.
+
+        For OAuth token endpoints (kimi refresh). Same pacing/retry/error
+        discipline as get_json; errors carry the host only — callers scrub.
+        """
+        host = urlparse(url).netloc
+        last: Exception | None = None
+        for attempt in range(self._max_retries + 1):
+            await self._pace(host)
+            try:
+                resp = await self._client.post(url, data=fields, headers=headers)
+            except httpx.HTTPError as e:
+                last = UpstreamError(f"network error from {host}: {e}")
+                await asyncio.sleep(0.5 * (2 ** attempt))
+                continue
+            if resp.status_code in (429, 503):
+                last = RateLimited(f"HTTP {resp.status_code} from {host}")
+                await asyncio.sleep(self._retry_after(resp, attempt))
+                continue
+            if resp.status_code in (401, 403):
+                raise AuthError(f"HTTP {resp.status_code} from {host}")
+            if resp.status_code == 404:
+                raise NotFound(f"HTTP 404 from {host}")
+            if resp.status_code >= 400:
+                raise UpstreamError(f"HTTP {resp.status_code} from {host}")
+            return resp.json()
+        raise last if last is not None else UpstreamError(f"request to {host} failed")

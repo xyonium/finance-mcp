@@ -5,8 +5,15 @@ insider_roster. fmp only knows institutional + insider ("insider" in fmp's
 vocabulary = the tool's "insider_transactions", mapped in the closure); any
 other (fmp, kind) pair raises NotFound in the closure so route_and_call falls
 back to yahoo naturally.
+
+T18 ruling 6: a Chinese company name (contains CJK) that parse_symbol can't
+normalize and kind="major" routes to kimi's tianyancha shareholders first
+whenever kimi is configured (the unified A-share chains don't know bare CN
+company names).
 """
 from __future__ import annotations
+
+import re
 
 from ..errors import NotFound, tool_error
 from ..symbols import parse_symbol
@@ -38,6 +45,14 @@ def register(mcp, providers, settings) -> None:
         if kind not in KINDS:
             return tool_error(f"unknown ownership kind {kind!r}",
                               hint="kind 可用: " + "|".join(KINDS))
+        if (isinstance(symbol, str) and kind == "major"
+                and re.search(r"[一-鿿]", symbol)):
+            # Chinese company name: parse_symbol US-defaults it instead of
+            # raising, so the kimi branch must run BEFORE symbol parsing.
+            kimi = providers.get("kimi") if providers else None
+            if kimi is not None and kimi.available():
+                result = await kimi.shareholders(symbol.strip())
+                return result if "error" in result else {"data": result}
         try:
             parsed = parse_symbol(symbol)
         except ValueError as e:

@@ -6,7 +6,7 @@ from .base import Provider
 
 
 def build_providers(settings: Settings) -> dict[str, Provider]:
-    from . import alphavantage, fmp, futu_bridge, marketaux, tradingview, yahoo
+    from . import alphavantage, fmp, futu_bridge, kimi, marketaux, tradingview, yahoo
 
     instances = [
         yahoo.YahooProvider(settings),
@@ -15,5 +15,6 @@ def build_providers(settings: Settings) -> dict[str, Provider]:
         alphavantage.AlphaVantageProvider(settings),
         marketaux.MarketauxProvider(settings),
         futu_bridge.FutuProvider(settings),
+        kimi.KimiProvider(settings),
     ]
     return {p.name: p for p in instances}

@@ -33,6 +33,7 @@ def _env_bool(name: str, default: bool) -> bool:
 DEFAULT_FMP_BASE_URL = "https://financialmodelingprep.com"
 DEFAULT_AV_BASE_URL = "https://www.alphavantage.co"
 DEFAULT_MARKETAUX_BASE_URL = "https://api.marketaux.com"
+DEFAULT_KIMI_BASE_URL = "https://api.kimi.com/coding/v1/tools"
 
 
 @dataclass(frozen=True)
@@ -50,6 +51,11 @@ class Settings:
     alphavantage_base_url: str = field(default_factory=lambda: _env("ALPHAVANTAGE_BASE_URL", DEFAULT_AV_BASE_URL))
     marketaux_api_token: str = field(default_factory=lambda: _env("MARKETAUX_API_TOKEN"))
     marketaux_base_url: str = field(default_factory=lambda: _env("MARKETAUX_BASE_URL", DEFAULT_MARKETAUX_BASE_URL))
+    kimi_proxy_url: str = field(default_factory=lambda: _env("KIMI_PROXY_URL"))
+    kimi_access_token: str = field(default_factory=lambda: _env("KIMI_ACCESS_TOKEN"))
+    kimi_auth_file: str = field(default_factory=lambda: _env("KIMI_AUTH_FILE"))
+    kimi_base_url: str = field(default_factory=lambda: _env("KIMI_BASE_URL", DEFAULT_KIMI_BASE_URL))
+    kimi_files_dir: str = field(default_factory=lambda: _env("KIMI_FILES_DIR", "/tmp/unified_finance_mcp"))
 
 
 def get_settings() -> Settings:

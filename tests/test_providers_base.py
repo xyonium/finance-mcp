@@ -4,7 +4,8 @@ from unified_finance_mcp.providers import build_providers
 
 def test_registry_keys():
     ps = build_providers(get_settings())
-    assert set(ps) == {"yahoo", "tradingview", "fmp", "alphavantage", "marketaux", "futu"}
+    assert set(ps) == {"yahoo", "tradingview", "fmp", "alphavantage", "marketaux",
+                       "futu", "kimi"}
 
 
 def test_keyless_available_and_coverage():
