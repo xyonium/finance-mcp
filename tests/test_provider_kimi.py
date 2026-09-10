@@ -89,10 +89,85 @@ async def test_call_returns_preview_and_saves_files(monkeypatch, tmp_path):
     # wire shape: call_data_source_tool + auto-generated file_path
     body = json.loads(respx.calls[0].request.content)
     assert body["method"] == "call_data_source_tool"
-    assert body["params"]["name"] == "tianyancha"
-    assert body["params"]["api"] == "search_company"
+    assert body["params"]["data_source_name"] == "tianyancha"
+    assert body["params"]["api_name"] == "search_company"
     assert body["params"]["params"]["keyword"] == "腾讯"
     assert body["params"]["params"]["file_path"].endswith(".csv")
+
+
+@respx.mock
+async def test_call_data_source_tool_wire_key_set_exact(monkeypatch):
+    """F1 probe: the call params carry exactly the protocol keys."""
+    respx.post(DEFAULT_KIMI_BASE_URL).respond(200, json=_ok("ok"))
+    p = make_provider(monkeypatch)
+    await p.call("tianyancha", "search_company", {"keyword": "腾讯"})
+    body = json.loads(respx.calls[0].request.content)
+    assert set(body["params"]) == {"data_source_name", "api_name", "params"}
+
+
+@respx.mock
+async def test_self_refresh_write_back_is_atomic(monkeypatch, tmp_path):
+    """F2: write-back goes through tmp + os.replace under flock."""
+    import os
+    monkeypatch.setattr(time, "sleep", lambda _s: None)
+    for v in ("KIMI_PROXY_URL", "KIMI_ACCESS_TOKEN"):
+        monkeypatch.delenv(v, raising=False)
+    f = _write_auth(tmp_path / "kimi-1.json", expired="2020-01-01T00:00:00Z")
+    monkeypatch.setenv("KIMI_AUTH_FILE", str(f))
+    replaced = {}
+    real_replace = os.replace
+
+    def spy(src, dst):
+        replaced["src"], replaced["dst"] = str(src), str(dst)
+        return real_replace(src, dst)
+
+    monkeypatch.setattr("unified_finance_mcp.providers.kimi.os.replace", spy)
+    respx.post("https://auth.kimi.com/api/oauth/token").respond(200, json={
+        "access_token": "new-at", "refresh_token": "new-rt", "expires_in": 900})
+    respx.post(DEFAULT_KIMI_BASE_URL).respond(200, json=_ok("ok"))
+    p = KimiProvider(get_settings())
+    await p.describe("wind")
+    assert replaced["dst"] == str(f)
+    assert replaced["src"].endswith(".kimi-1.json.tmp")
+    assert not (tmp_path / ".kimi-1.json.tmp").exists()  # no half-written file left
+    saved = json.loads(f.read_text())  # valid JSON after write-back
+    assert saved["access_token"] == "new-at"
+    assert saved["device_id"] == "dev-1"  # other fields preserved
+
+
+@respx.mock
+async def test_call_files_base64_wrapped_and_newline_decode(monkeypatch, tmp_path):
+    """F3: standard base64 (76-col wrap / trailing newline) must land on disk."""
+    import base64
+    monkeypatch.setenv("KIMI_FILES_DIR", str(tmp_path))
+    raw = b"line1,line2\n" * 40
+    b64 = base64.b64encode(raw).decode()
+    wrapped = "\n".join(b64[i:i + 76] for i in range(0, len(b64), 76))
+    respx.post(DEFAULT_KIMI_BASE_URL).respond(200, json=_ok(
+        "ok", files=[
+            {"name": "wrapped.bin", "content": wrapped, "encoding": "base64"},
+            {"name": "trailing.bin", "content": b64 + "\n", "encoding": "base64"}]))
+    p = make_provider(monkeypatch)
+    out = await p.call("tianyancha", "x", {"keyword": "k"})
+    assert (tmp_path / "wrapped.bin").read_bytes() == raw
+    assert (tmp_path / "trailing.bin").read_bytes() == raw
+    assert len(out["saved_files"]) == 2
+
+
+@respx.mock
+async def test_proxy_401_hint_points_at_proxy(monkeypatch):
+    """F4: with KIMI_PROXY_URL set, a 401 blames the proxy, not 'unconfigured'."""
+    for v in ("KIMI_ACCESS_TOKEN", "KIMI_AUTH_FILE"):
+        monkeypatch.delenv(v, raising=False)
+    monkeypatch.setenv("KIMI_PROXY_URL", PROXY_URL)
+    respx.post(PROXY_URL).respond(401, json={"error": "unauthorized"})
+    p = KimiProvider(get_settings())
+    with pytest.raises(AuthError) as exc:
+        await p.describe("wind")
+    msg = str(exc.value)
+    assert "未配置" not in msg
+    assert "proxy" in msg
+    assert respx.calls.call_count == 1  # proxy path: no re-read retry
 
 
 @respx.mock

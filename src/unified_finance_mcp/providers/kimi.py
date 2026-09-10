@@ -130,7 +130,10 @@ class _KimiCredentials:
                                   refresh_token))
 
         def _write_back():
-            with self.path.open("r+") as fh:      # flock 降低与 cliproxy 的写冲突
+            # Atomic write-back: tmp file in the same dir + os.replace under
+            # flock — a crash mid-write can never leave a truncated auth file.
+            tmp_path = self.path.with_name(f".{self.path.name}.tmp")
+            with self.path.open("r") as fh:
                 fcntl.flock(fh, fcntl.LOCK_EX)
                 data = json.load(fh)
                 data.update({"access_token": body["access_token"],
@@ -140,7 +143,8 @@ class _KimiCredentials:
                                         .isoformat().replace("+00:00", "Z"),
                              "last_refresh": datetime.now(timezone.utc).isoformat(),
                              "timestamp": int(time.time())})
-                fh.seek(0); json.dump(data, fh); fh.truncate()
+                tmp_path.write_text(json.dumps(data))
+                os.replace(tmp_path, self.path)
                 fcntl.flock(fh, fcntl.LOCK_UN)
             self._mtime = 0.0
             return data
@@ -253,7 +257,10 @@ class KimiProvider(Provider):
         except AuthError:
             # Re-read the credential file once (cliproxy may have refreshed),
             # then retry; the direct-token/proxy paths have nothing to re-read.
-            if self.settings.kimi_access_token or self.settings.kimi_proxy_url:
+            if self.settings.kimi_proxy_url:
+                raise AuthError("kimi proxy 已配置但返回 401：检查 proxy 容器的"
+                                "凭证/cliproxy 登录状态") from None
+            if self.settings.kimi_access_token:
                 raise AuthError(_AUTH_HINT) from None
             self._creds = None
             body = await request(await self._headers())
@@ -279,7 +286,7 @@ class KimiProvider(Provider):
             merged["file_path"] = (f"{self.settings.kimi_files_dir}/"
                                    f"{source}_{api}_{uuid.uuid4().hex[:8]}.csv")
         body = await self._invoke("call_data_source_tool", {
-            "name": source, "api": api, "params": merged})
+            "data_source_name": source, "api_name": api, "params": merged})
         result = body.get("result") if isinstance(body, dict) else None
         text = _extract_user_text(result)
         files = body.get("files") if isinstance(body, dict) else None
@@ -301,7 +308,7 @@ class KimiProvider(Provider):
             content = item.get("content")
             if isinstance(content, str):
                 try:
-                    raw = base64.b64decode(content, validate=True) \
+                    raw = base64.b64decode("".join(content.split())) \
                         if item.get("encoding") == "base64" else content.encode()
                 except (ValueError, UnicodeEncodeError):
                     continue

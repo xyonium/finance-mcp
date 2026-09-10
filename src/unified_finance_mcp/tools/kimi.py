@@ -141,9 +141,13 @@ def _is_error_text(text: str) -> bool:
 
 async def _resolve_full_name(p: KimiProvider, company: str) -> str:
     """tianyancha requires the company FULL name: search first, take the
-    first result line; fall back to the input on an empty/error preview."""
-    result = await _probe_api(p, "tianyancha", _SEARCH_APIS,
-                              {"keyword": company}, "search")
+    first result line; fall back to the input on an empty/error preview OR
+    when every search candidate misses (the tool must still aggregate)."""
+    try:
+        result = await _probe_api(p, "tianyancha", _SEARCH_APIS,
+                                  {"keyword": company}, "search")
+    except ProviderError:
+        return company
     text = str(result.get("data_preview") or "")
     first = next((line.strip() for line in text.splitlines() if line.strip()), None)
     if first and not _is_error_text(first):

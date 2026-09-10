@@ -239,6 +239,27 @@ async def test_company_risk_cn_never_raises(monkeypatch):
     assert "error" in out
 
 
+async def test_company_risk_cn_search_all_miss_falls_back_to_input(monkeypatch):
+    """F5: search candidates all missing -> use the user input as the name."""
+    p = make_kimi(monkeypatch)
+    aspect_params = {}
+
+    async def fake_call(source, api, params, **_kw):
+        if api in ("search_company", "search"):
+            raise NotFound("kimi: API_NOT_FOUND")
+        aspect_params[api] = params
+        return {"data_preview": "rows", "saved_files": []}
+
+    p.call = AsyncMock(side_effect=fake_call)
+    p.describe = AsyncMock(return_value="doc")
+    out = await kimi_mod.get_company_risk_cn("腾讯", aspects=["shareholders"],
+                                             _provider=p)
+    assert "error" not in out
+    assert out["company"] == "腾讯"  # original input, not an error dict
+    assert "shareholders" in out["aspects"]
+    assert aspect_params["shareholders"]["name"] == "腾讯"
+
+
 # ── macro/ownership wiring (controller ruling 6) ────────────────────────────
 
 async def test_economic_data_chain_kimi_first(monkeypatch):
