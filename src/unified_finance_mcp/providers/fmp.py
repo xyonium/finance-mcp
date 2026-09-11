@@ -192,6 +192,46 @@ class FmpProvider(Provider):
     async def search(self, query: str, limit: int = 10) -> list[dict]:
         return await self._get("search-name", query=query, limit=limit)
 
+    async def option_chain(self, parsed: ParsedSymbol,
+                           expiration: str | None = None) -> dict:
+        # Stable endpoint shapes (2026-09-11, not yet in verified free-tier
+        # matrix): /stable/options-chain for the snapshotted chain,
+        # /stable/options-expirations for the available dates. A 402 there
+        # folds into the standard RateLimited error dict without breaking
+        # routing; an empty body maps to NotFound via _get().
+        params: dict = {"symbol": parsed.fmp()}
+        if expiration:
+            params["date"] = expiration
+        chain = await self._get("options-chain", **params)
+        try:
+            expirations = await self._get("options-expirations", symbol=parsed.fmp())
+        except ProviderError:
+            expirations = []
+        return {"underlying": parsed.fmp(), "expiration": expiration,
+                "available_expirations": expirations, "chain": chain,
+                "source": self.name}
+
+    async def short_interest(self, parsed: ParsedSymbol) -> dict:
+        rows = await self._get("short-interest", symbol=parsed.fmp())
+        return {"symbol": parsed.fmp(), "data": rows, "source": self.name}
+
+    async def analyst_estimates(self, parsed: ParsedSymbol) -> dict:
+        out: dict = {"symbol": parsed.fmp(), "source": self.name}
+        try:
+            out["estimates"] = await self._get(
+                "analyst-estimates", symbol=parsed.fmp(), period="annual")
+        except ProviderError:
+            out["estimates"] = []
+        for key, path in (("price_targets", "price-targets"),
+                          ("recommendations", "recommendations")):
+            try:
+                out[key] = await self._get(path, symbol=parsed.fmp())
+            except ProviderError:
+                out[key] = []
+        if not out["estimates"] and not out["price_targets"]:
+            raise NotFound(f"fmp: no analyst estimates for {parsed.fmp()}")
+        return out
+
     async def screener(self, market: str = "US", filters: dict | None = None,
                        sort: str = "market_cap", order: str = "desc",
                        limit: int = 25) -> list[dict]:

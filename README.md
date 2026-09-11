@@ -13,7 +13,7 @@ surface, with market-aware auto-routing across sources.
 
 | Surface | Tools | Notes |
 |---|---|---|
-| **Unified tools** | 18 | Domain-organized, cross-source tools with a `source` parameter: `auto` routes by market coverage, or pin one source explicitly |
+| **Unified tools** | 21 | Domain-organized, cross-source tools with a `source` parameter: `auto` routes by market coverage, or pin one source explicitly |
 | **TradingView containers** | 3 | `tv_scan`, `tv_analyze`, `egx_market` — scanner/analysis containers selected by `action` (unknown actions return the available list) |
 | **Futu OpenD mount** | 53 | All `futu-opend-mcp` tools are mounted alongside the unified tools (`get_snapshot`, `get_kline`, `futu_get_option_chain`, …) when OpenD is configured |
 | **L2 self-describing containers** | 2 | `quant_backtest` and `kimi_datasource` keep secondary functionality out of the primary tool list; call with `action='help'` / `action='list'` to discover them |
@@ -30,7 +30,7 @@ TradingView (`EGX:COMI`) symbol forms; bare tickers default to US.
 
 <img src="docs/architecture.svg" alt="unified-finance-mcp architecture" width="1000">
 
-One server, two faces: the 18 unified tools route through a market-aware
+One server, two faces: the 21 unified tools route through a market-aware
 auto-router to the external providers (solid lines), while the 53 mounted
 `futu-opend-mcp` tools attach directly to a running Futu OpenD gateway
 (dashed). Badges 1–8 on the tool boxes map to the routing chains in the
@@ -226,10 +226,13 @@ also removes the Python ≥3.14 wrapper constraint mcpo hit).
 | `get_news` | Symbol news, or global headlines with `symbol=None` |
 | `get_technical_indicators` | Ratings summary + indicator values (`summary` or named indicators) |
 | `run_screener` | Screen stocks by market and numeric filters, sorted and limited |
-| `get_ownership` | Major / institutional / mutual-fund holders, insider transactions |
+| `get_ownership` | Major / institutional / mutual-fund holders, insider transactions & summary |
 | `get_events_calendar` | Earnings, dividends, IPO calendar (date range optional) |
 | `get_economic_data` | Macro series: GDP, CPI, unemployment, rates, treasury yields, … |
 | `search_symbols` | Search symbols by company name or ticker |
+| `get_option_chain` | Option chain for one expiration (`YYYY-MM-DD`, nearest by default): calls/puts with IV/OI |
+| `get_short_interest` | Short-interest snapshot: shares short, days-to-cover, % of float |
+| `get_analyst_estimates` | Analyst earnings/revenue estimates, price targets, recommendations |
 | `get_company_risk_cn` | CN company risk profile from tianyancha (via kimi) |
 | `quant_backtest` | Strategy backtest container: `run` / `compare` / `walk_forward`; `action='help'` for the full parameter guide |
 | `kimi_datasource` | Self-describing datasource access: `action='list'` / `'describe'` / `'call'` |

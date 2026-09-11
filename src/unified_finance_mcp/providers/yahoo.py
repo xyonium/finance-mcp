@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import anyio.to_thread
+import pandas as pd
 import yfinance as yf
 
-from ..errors import ProviderError
+from ..errors import NotFound, ProviderError
 from ..symbols import ParsedSymbol
 from .base import Provider
 
@@ -13,7 +14,8 @@ _STMT = {"income": "get_income_stmt", "balance": "get_balance_sheet",
 _HOLDER = {"major": "major_holders", "institutional": "institutional_holders",
            "mutualfund": "mutualfund_holders",
            "insider_transactions": "insider_transactions",
-           "insider_roster": "insider_roster_holders"}
+           "insider_roster": "insider_roster_holders",
+           "insider_summary": "insider_summary"}  # handled separately, not a df property
 
 
 class YahooProvider(Provider):
@@ -94,6 +96,19 @@ class YahooProvider(Provider):
         t = await self._ticker(parsed)
         if kind not in _HOLDER:
             raise ProviderError(f"yahoo: unknown ownership kind {kind!r}")
+        if kind == "insider_summary":
+            # Insider summary is not a DataFrame property: pull Purchases/Sales
+            # from `insider_purchases` (pandas df) and collapse to one dict.
+            df = await self._run(lambda: t.insider_purchases)
+            if df is None or (hasattr(df, "empty") and df.empty):
+                return []
+            row = df.iloc[0].to_dict()
+            return [{"symbol": parsed.yahoo(),
+                     "net_sh_activity": row.get("Net Sh Activity"),
+                     "net_percent": row.get("Net %"),
+                     "purchases": row.get("Purchases"),
+                     "sales": row.get("Sales"),
+                     "source": self.name}]
         df = await self._run(lambda: getattr(t, _HOLDER[kind]))
         if df is None or (hasattr(df, "empty") and df.empty):
             return []
@@ -104,3 +119,83 @@ class YahooProvider(Provider):
         return [{"symbol": q.get("symbol"), "name": q.get("shortname") or q.get("longname"),
                  "exchange": q.get("exchange"), "type": q.get("quoteType"),
                  "source": self.name} for q in (s.quotes or [])]
+
+    async def option_chain(self, parsed: ParsedSymbol,
+                           expiration: str | None = None) -> dict:
+        t = await self._ticker(parsed)
+        expirations = await self._run(lambda: t.options)
+        if not expirations:
+            raise NotFound(f"yahoo: no options listed for {parsed.yahoo()}")
+        chosen = expiration or expirations[0]
+        if chosen not in expirations:
+            raise NotFound(
+                f"yahoo: expiration {chosen!r} not available "
+                f"(have: {', '.join(expirations[:6])}{'...' if len(expirations) > 6 else ''})")
+        oc = await self._run(t.option_chain, chosen)
+        if oc is None or (oc.calls is None and oc.puts is None):
+            raise NotFound(f"yahoo: empty option chain for {parsed.yahoo()} {chosen}")
+        # All NaN/NaT/Timestamp-normalization happens inside the worker thread:
+        # namedtuple fields are pandas DataFrames whose cells are numpy scalars,
+        # un-JSON-serializable outside to_thread conversion.
+        return await self._run(self._option_payload, oc, chosen, list(expirations),
+                               parsed.yahoo())
+
+    @staticmethod
+    def _option_payload(oc, expiration: str, available: list[str], yahoo: str) -> dict:
+        def rows(df):
+            return [] if df is None or df.empty else df.where(pd.notna(df), None).to_dict("records")
+
+        underlying = oc.underlying or {}
+        return {"underlying": yahoo,
+                "quote": {"price": underlying.get("regularMarketPrice"),
+                          "currency": underlying.get("currency"),
+                          "exchange": underlying.get("fullExchangeName"),
+                          "name": underlying.get("shortName") or underlying.get("longName")},
+                "expiration": expiration,
+                "available_expirations": available,
+                "calls": rows(oc.calls),
+                "puts": rows(oc.puts),
+                "source": "yahoo"}
+
+    async def short_interest(self, parsed: ParsedSymbol) -> dict:
+        t = await self._ticker(parsed)
+        info = await self._run(lambda: t.info)
+        keys = ("sharesShort", "sharesShortPriorMonth", "shortRatio",
+                "shortPercentOfFloat", "shortPercentOfSharesOutstanding",
+                "dateShortInterest", "sharesFloat", "sharesOutstanding",
+                "heldPercentInsiders", "heldPercentInstitutions")
+        if all(info.get(k) is None for k in keys[:5]):
+            raise NotFound(f"yahoo: no short-interest data for {parsed.yahoo()}")
+        return {"symbol": parsed.yahoo(),
+                "shares_short": info.get("sharesShort"),
+                "shares_short_prior_month": info.get("sharesShortPriorMonth"),
+                "short_ratio": info.get("shortRatio"),
+                "short_percent_of_float": info.get("shortPercentOfFloat"),
+                "short_percent_of_shares_outstanding": info.get("shortPercentOfSharesOutstanding"),
+                "date_short_interest": info.get("dateShortInterest"),
+                "shares_float": info.get("sharesFloat"),
+                "shares_outstanding": info.get("sharesOutstanding"),
+                "held_percent_insiders": info.get("heldPercentInsiders"),
+                "held_percent_institutions": info.get("heldPercentInstitutions"),
+                "source": self.name}
+
+    async def analyst_estimates(self, parsed: ParsedSymbol) -> dict:
+        t = await self._ticker(parsed)
+
+        def fetch_all():
+            pt = t.analyst_price_targets or {}
+            def df_to_records(df):
+                if df is None or (hasattr(df, "empty") and df.empty):
+                    return []
+                return df.reset_index().where(pd.notna(df), None).to_dict("records")
+            return {"price_targets": pt,
+                    "earnings_estimate": df_to_records(t.earnings_estimate),
+                    "revenue_estimate": df_to_records(t.revenue_estimate),
+                    "growth_estimates": df_to_records(t.growth_estimates),
+                    "eps_trend": df_to_records(t.eps_trend),
+                    "recommendations": df_to_records(t.recommendations)[:20]}
+
+        out = await self._run(fetch_all)
+        if not out["price_targets"] and not out["earnings_estimate"]:
+            raise NotFound(f"yahoo: no analyst estimates for {parsed.yahoo()}")
+        return {"symbol": parsed.yahoo(), **out, "source": self.name}

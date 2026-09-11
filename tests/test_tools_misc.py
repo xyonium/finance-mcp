@@ -89,8 +89,25 @@ async def test_ownership_invalid_kind_hint(monkeypatch):
     out = await results["get_ownership"]("AAPL", "bogus")
     assert "error" in out
     for kind in ("major", "institutional", "mutualfund", "insider_transactions",
-                 "insider_roster"):
+                 "insider_roster", "insider_summary"):
         assert kind in out["hint"]
+
+
+async def test_ownership_insider_summary_yahoo_only(monkeypatch):
+    # insider_summary is NOT in _FMP_KIND, so the closure raises NotFound for
+    # fmp and must never reach it; only yahoo answers.
+    providers = build_providers(get_settings())
+    rows = [{"symbol": "AAPL", "net_sh_activity": -312000, "net_percent": -0.041}]
+    providers["yahoo"].ownership = AsyncMock(return_value=rows)
+    providers["fmp"].ownership = AsyncMock(
+        side_effect=AssertionError("fmp must not be called for insider_summary"))
+    _set_available(providers, ("fmp",))
+    results = {}
+    ownership_mod.register(_capture(results), providers, get_settings())
+    out = await results["get_ownership"]("AAPL", "insider_summary")
+    assert out == {"data": rows}
+    providers["fmp"].ownership.assert_not_called()
+    assert providers["yahoo"].ownership.await_args.args[1] == "insider_summary"
 
 
 async def test_ownership_bad_symbol_never_raises(monkeypatch):

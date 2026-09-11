@@ -1,10 +1,12 @@
 """get_ownership: holder/insider ownership, yahoo first with fmp fallback.
 
 kind vocabulary: major | institutional | mutualfund | insider_transactions |
-insider_roster. fmp only knows institutional + insider ("insider" in fmp's
-vocabulary = the tool's "insider_transactions", mapped in the closure); any
-other (fmp, kind) pair raises NotFound in the closure so route_and_call falls
-back to yahoo naturally.
+insider_roster | insider_summary. fmp only knows institutional + insider
+("insider" in fmp's vocabulary = the tool's "insider_transactions", mapped in
+the closure); any other (fmp, kind) pair raises NotFound in the closure so
+route_and_call falls back to yahoo naturally. kind="insider_summary" is
+yahoo-only: it aggregates net_sh_activity over the trailing six months so
+agents get one figure, not a 100-row transaction table.
 
 T18 ruling 6: a Chinese company name (contains CJK) that parse_symbol can't
 normalize and kind="major" routes to kimi's tianyancha shareholders first
@@ -22,7 +24,7 @@ from ._routing import route_and_call
 CHAIN = ["yahoo", "fmp"]
 
 KINDS = ("major", "institutional", "mutualfund", "insider_transactions",
-         "insider_roster")
+         "insider_roster", "insider_summary")
 
 # fmp's vocabulary is a subset; the tool kind -> fmp kind mapping.
 _FMP_KIND = {"institutional": "institutional", "insider_transactions": "insider"}
@@ -35,11 +37,13 @@ def register(mcp, providers, settings) -> None:
         """Ownership breakdown for one symbol.
 
         `kind` is major (top holders) | institutional | mutualfund |
-        insider_transactions | insider_roster. `source` may be auto | yahoo |
-        fmp (fmp covers institutional and insider_transactions only). Accepts
-        futu (HK.00700), yahoo (0700.HK, COMI.CA) or TradingView (EGX:COMI)
-        symbol forms; bare tickers default to US. Returns {"data": [row, ...]}
-        on success, or the routing error dict at the top level on failure —
+        insider_transactions | insider_roster | insider_summary (yahoo-only:
+        net_sh_activity + % over trailing 6 months). `source` may be auto |
+        yahoo | fmp (fmp covers institutional and insider_transactions only).
+        Accepts futu (HK.00700), yahoo (0700.HK, COMI.CA) or TradingView
+        (EGX:COMI) symbol forms; bare tickers default to US. Returns
+        {"data": [row, ...]} on success (insider_summary returns a one-row
+        list), or the routing error dict at the top level on failure —
         callers check `"error" in out`.
         """
         if kind not in KINDS:

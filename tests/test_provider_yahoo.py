@@ -220,3 +220,117 @@ async def test_unknown_statement_and_holder_kind_raise_provider_error(monkeypatc
         await p.financial_report(parse_symbol("AAPL"), "nope", "annual")
     with pytest.raises(ProviderError):
         await p.ownership(parse_symbol("AAPL"), "nope")
+
+
+# ── option_chain / short_interest / analyst_estimates / insider_summary ────
+
+async def test_option_chain_nearest_expiry(monkeypatch):
+    import pandas as pd
+    t = MagicMock()
+    t.options = ("2025-09-19", "2025-09-26")
+    calls = pd.DataFrame({"strike": [220.0], "lastPrice": [14.2],
+                          "openInterest": [29512], "impliedVolatility": [0.313]})
+    puts = pd.DataFrame({"strike": [220.0], "lastPrice": [1.1]})
+    underlying = {"regularMarketPrice": 232.5, "currency": "USD",
+                  "fullExchangeName": "NasdaqGS", "shortName": "Apple Inc."}
+    t.option_chain = lambda d: type("OC", (), {"calls": calls, "puts": puts,
+                                               "underlying": underlying})
+    p = make_provider(monkeypatch, t)
+    out = await p.option_chain(parse_symbol("AAPL"))
+    assert out["underlying"] == "AAPL" and out["expiration"] == "2025-09-19"
+    assert out["available_expirations"] == ["2025-09-19", "2025-09-26"]
+    assert out["calls"][0]["strike"] == 220.0 and out["puts"][0]["lastPrice"] == 1.1
+    assert out["quote"]["price"] == 232.5 and out["source"] == "yahoo"
+
+
+async def test_option_chain_no_listed_raises_not_found(monkeypatch):
+    from unified_finance_mcp.errors import NotFound
+    t = MagicMock()
+    t.options = ()
+    p = make_provider(monkeypatch, t)
+    with pytest.raises(NotFound):
+        await p.option_chain(parse_symbol("AAPL"))
+
+
+async def test_option_chain_bad_expiration_raises_not_found(monkeypatch):
+    from unified_finance_mcp.errors import NotFound
+    t = MagicMock()
+    t.options = ("2025-09-19",)
+    p = make_provider(monkeypatch, t)
+    with pytest.raises(NotFound) as exc_info:
+        await p.option_chain(parse_symbol("AAPL"), "2025-12-31")
+    assert "2025-09-19" in str(exc_info.value)
+
+
+async def test_short_interest_maps_info_keys(monkeypatch):
+    t = MagicMock()
+    t.info = {"sharesShort": 11345000, "sharesShortPriorMonth": 10900000,
+              "shortRatio": 0.97, "shortPercentOfFloat": 0.0731,
+              "shortPercentOfSharesOutstanding": 0.0455,
+              "dateShortInterest": 1756252800, "sharesFloat": 155200000,
+              "sharesOutstanding": 421800000,
+              "heldPercentInsiders": 0.113, "heldPercentInstitutions": 0.62}
+    p = make_provider(monkeypatch, t)
+    out = await p.short_interest(parse_symbol("GME"))
+    assert out["symbol"] == "GME" and out["shares_short"] == 11345000
+    assert out["short_percent_of_float"] == 0.0731
+    assert out["short_ratio"] == 0.97 and out["source"] == "yahoo"
+
+
+async def test_short_interest_no_data_not_found(monkeypatch):
+    from unified_finance_mcp.errors import NotFound
+    t = MagicMock()
+    t.info = {}
+    p = make_provider(monkeypatch, t)
+    with pytest.raises(NotFound):
+        await p.short_interest(parse_symbol("AAPL"))
+
+
+async def test_analyst_estimates_full_shape(monkeypatch):
+    import pandas as pd
+    t = MagicMock()
+    t.analyst_price_targets = {"current": 232.5, "mean": 245.3,
+                               "high": 280.0, "low": 180.0,
+                               "numberOfAnalysts": 34}
+    t.earnings_estimate = pd.DataFrame({"period": ["0q"], "avg": [1.65]})
+    t.revenue_estimate = pd.DataFrame({"period": ["0q"], "avg": [94e9]})
+    t.growth_estimates = pd.DataFrame({"period": ["0q"], "stockTrend": [0.08]})
+    t.eps_trend = pd.DataFrame({"period": ["0q"], "current": [1.65]})
+    t.recommendations = pd.DataFrame({"period": ["0m"], "strongBuy": [12]})
+    p = make_provider(monkeypatch, t)
+    out = await p.analyst_estimates(parse_symbol("AAPL"))
+    assert out["symbol"] == "AAPL" and out["price_targets"]["mean"] == 245.3
+    assert out["earnings_estimate"][0]["avg"] == 1.65
+    assert len(out["recommendations"]) <= 20 and out["source"] == "yahoo"
+
+
+async def test_analyst_estimates_nothing_raises_not_found(monkeypatch):
+    from unified_finance_mcp.errors import NotFound
+    t = MagicMock()
+    t.analyst_price_targets = {}
+    t.earnings_estimate = None
+    t.revenue_estimate = t.growth_estimates = t.eps_trend = t.recommendations = None
+    p = make_provider(monkeypatch, t)
+    with pytest.raises(NotFound):
+        await p.analyst_estimates(parse_symbol("AAPL"))
+
+
+async def test_ownership_insider_summary_aggregates(monkeypatch):
+    import pandas as pd
+    t = MagicMock()
+    t.insider_purchases = pd.DataFrame({
+        "Net Sh Activity": [-312000], "Net %": [-0.041],
+        "Purchases": [12000], "Sales": [324000]})
+    p = make_provider(monkeypatch, t)
+    rows = await p.ownership(parse_symbol("AAPL"), "insider_summary")
+    assert rows == [{"symbol": "AAPL",
+                     "net_sh_activity": -312000, "net_percent": -0.041,
+                     "purchases": 12000, "sales": 324000, "source": "yahoo"}]
+
+
+
+async def test_ownership_insider_summary_empty(monkeypatch):
+    t = MagicMock()
+    t.insider_purchases = None
+    p = make_provider(monkeypatch, t)
+    assert await p.ownership(parse_symbol("AAPL"), "insider_summary") == []
