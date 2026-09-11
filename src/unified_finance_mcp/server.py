@@ -63,6 +63,8 @@ INSTRUCTIONS = (
     "`action`; an unknown action returns the available list. quant_backtest runs "
     "strategy backtests; call it with action='help' for its full parameter guide. "
     "get_company_risk_cn profiles Chinese companies (tianyancha via kimi); "
+    "for Chinese 快讯/flash headlines (熱度/view_count, no summary/sentiment), "
+    "use the futu-mounted search_news tool instead of get_news; "
     "kimi_datasource gives direct self-describing access to deep datasources with "
     "action='list' | 'describe' | 'call' (e.g. action='list' to enumerate sources, "
     "action='describe' for one source's API doc, action='call' with source/api/params "

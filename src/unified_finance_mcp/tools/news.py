@@ -32,6 +32,11 @@ def register(mcp, providers, settings) -> None:
         (0700.HK, COMI.CA) or TradingView (EGX:COMI) symbol forms; bare tickers
         default to US. Returns {"data": [item, ...]} on success, or the routing
         error dict at the top level on failure — callers check `"error" in out`.
+
+        For Chinese 快讯/flash headlines from the Futu ecosystem (热度排序,
+        view_count, no summary/sentiment), call the mounted `search_news`
+        tool instead — it speaks Futu's own shape, not the unified news-item
+        contract used here.
         """
         limit = max(1, min(limit, 50))
         if symbol is None:
