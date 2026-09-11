@@ -476,14 +476,31 @@ async def test_proxy_url_available_and_no_auth_header(monkeypatch):
 
 @respx.mock
 async def test_proxy_url_beats_direct_token(monkeypatch):
+    """proxy URL wins over direct api.kimi.com. When KIMI_ACCESS_TOKEN is also
+    set, it is forwarded as the CLIProxyAPI management key (Bearer header);
+    the proxy strips this header before talking to Kimi."""
     monkeypatch.setenv("KIMI_PROXY_URL", PROXY_URL)
-    monkeypatch.setenv("KIMI_ACCESS_TOKEN", "tok")
+    monkeypatch.setenv("KIMI_ACCESS_TOKEN", "mgmt_key_for_cliproxy")
     respx.post(PROXY_URL).respond(200, json=_ok("via proxy"))
     respx.post(DEFAULT_KIMI_BASE_URL).respond(200, json=_ok("via direct"))
     p = KimiProvider(get_settings())
     assert await p.describe("imf") == "via proxy"
     assert respx.calls[0].request.url.host == "kimi-proxy"
+    # Management key flows to the proxy endpoint so the host middleware accepts.
+    assert respx.calls[0].request.headers["authorization"] == "Bearer mgmt_key_for_cliproxy"
+
+
+@respx.mock
+async def test_proxy_url_without_token_sends_no_auth_header(monkeypatch):
+    """Unauthenticated proxy: no KIMI_ACCESS_TOKEN, no Authorization header."""
+    monkeypatch.setenv("KIMI_PROXY_URL", PROXY_URL)
+    monkeypatch.delenv("KIMI_ACCESS_TOKEN", raising=False)
+    monkeypatch.delenv("KIMI_AUTH_FILE", raising=False)
+    respx.post(PROXY_URL).respond(200, json=_ok("anon ok"))
+    p = KimiProvider(get_settings())
+    assert await p.describe("imf") == "anon ok"
     assert "authorization" not in respx.calls[0].request.headers
+    assert respx.calls[0].request.headers["x-msh-device-id"]
 
 
 # ── unconfigured ────────────────────────────────────────────────────────────

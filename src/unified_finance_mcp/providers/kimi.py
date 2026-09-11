@@ -3,12 +3,17 @@ user-supplied Kimi Code token); this client only sends a Bearer + X-Msh headers.
 Protocol reference (re-implemented, NOT copied): AGPL plugin
 piexian/astrbot_plugin_kimi_datasource_api + official Kimi Code plugin docs.
 
-Token/base resolution order (controller ruling 2, 2026-09-10 proxy decision):
-  1. settings.kimi_proxy_url non-empty -> base_url = proxy URL, NO
-     Authorization header (the proxy container holds/refreshes the creds);
-     X-Msh-* headers are still attached with a generated device_id.
-  2. settings.kimi_access_token -> base_url = settings.kimi_base_url,
-     Bearer = token, device_id = _generated_device_id() (XDG-persisted).
+Token/base resolution order (controller ruling 2, 2026-09-10 proxy decision;
+management-key extension for the cliproxy kimi-tools plugin, 2026-09-11):
+  1. settings.kimi_proxy_url non-empty -> base_url = proxy URL. The proxy
+     holds/refreshes the upstream bearer. If settings.kimi_access_token is
+     ALSO set here, its value is used as the CLIProxyAPI *management* key
+     for the proxy endpoint and sent as `Authorization: Bearer <token>`;
+     the proxy strips it before talking to Kimi. Leave that empty for an
+     unauthenticated proxy.
+  2. settings.kimi_access_token (without proxy_url) -> base_url =
+     settings.kimi_base_url, Bearer = token, device_id = _generated_device_id()
+     (XDG-persisted).
   3. resolve_kimi_auth_file(settings) -> base_url = settings.kimi_base_url,
      creds from the cliproxy auth JSON (_KimiCredentials, incl. the
      self-refresh fallback via auth.kimi.com).
@@ -57,7 +62,8 @@ KIMI_OAUTH_TOKEN_URL = "https://auth.kimi.com/api/oauth/token"
 KIMI_CLIENT_ID = "17e5f671-d194-4dfb-9706-5516cb48c098"  # Kimi Code CLI public client
 _REFRESH_MARGIN = 60  # 距过期不足 60s 视为待刷新
 
-_AUTH_HINT = ("kimi 未配置：设 KIMI_PROXY_URL 指 kimi-datasource-proxy 容器，"
+_AUTH_HINT = ("kimi 未配置：设 KIMI_PROXY_URL 指 cliproxy kimi-tools 管理端点"
+              "（若该端点要求鉴权，请把 KIMI_ACCESS_TOKEN 设为 cliproxy 管理 key），"
               "或 KIMI_ACCESS_TOKEN 直注，"
               "或 KIMI_AUTH_FILE 指 cliproxy 的 auths/kimi-*.json")
 
@@ -245,7 +251,13 @@ class KimiProvider(Provider):
             "User-Agent": f"kimi-datasource/{KIMI_DATASOURCE_VERSION}",
         }
         if self.settings.kimi_proxy_url:
-            # Proxy holds/refreshes the credentials: no Authorization header.
+            # Proxy holds/refreshes the upstream bearer. If kimi_access_token
+            # is ALSO set, its value is used as the CLIProxyAPI management key
+            # for the proxy endpoint (the proxy strips it before talking to
+            # Kimi, so it never leaves the cliproxy boundary). Leave empty for
+            # an unauthenticated proxy.
+            if self.settings.kimi_access_token:
+                headers["Authorization"] = f"Bearer {self.settings.kimi_access_token}"
             headers["X-Msh-Device-Id"] = _generated_device_id(self.settings)
             return headers
         if self.settings.kimi_access_token:
