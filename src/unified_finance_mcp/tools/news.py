@@ -1,18 +1,19 @@
 """get_news: headline news for one symbol or the global feed, auto-routed.
 
-With a symbol the chain is fmp -> alphavantage -> marketaux -> yahoo (T11
-brief). Without a symbol only marketaux has a global feed, so the chain is
-["marketaux", "fmp"] and the closure raises NotFound for fmp when parsed is
-None (fmp's news requires a symbol), which lets route_and_call skip it cleanly.
+With a symbol the chain is alphavantage -> yahoo -> marketaux (updated
+2026-09-11: FMP free keys paywall every news endpoint with HTTP 402, so
+FmpProvider.news short-circuits NotFound locally and fmp never enters the
+candidate set; ordering by field richness: alphavantage has summary +
+per-ticker sentiment, yahoo/marketaux have neither). Without a symbol only
+marketaux has a global feed, so the chain is ["marketaux"].
 """
 from __future__ import annotations
 
-from ..errors import NotFound
 from ..symbols import parse_symbol
 from ._routing import route_and_call
 
-SYMBOL_CHAIN = ["fmp", "alphavantage", "marketaux", "yahoo"]
-GLOBAL_CHAIN = ["marketaux", "fmp"]
+SYMBOL_CHAIN = ["alphavantage", "yahoo", "marketaux"]
+GLOBAL_CHAIN = ["marketaux"]
 
 
 def register(mcp, providers, settings) -> None:
@@ -21,6 +22,11 @@ def register(mcp, providers, settings) -> None:
                        source: str = "auto") -> dict:
         """Latest news: symbol-specific, or global headlines when symbol=None.
 
+        Auto-routes by field richness: alphavantage (summary + per-ticker
+        sentiment) -> yahoo -> marketaux. FMP is excluded because free-tier
+        keys paywall every news endpoint (HTTP 402): FmpProvider.news
+        short-circuits NotFound locally, so explicit source="fmp" returns a
+        clean not_found error dict while auto never wastes a request on it.
         `limit` items are returned (bounded to 50). `source` may be auto |
         fmp | alphavantage | marketaux | yahoo. Accepts futu (HK.00700), yahoo
         (0700.HK, COMI.CA) or TradingView (EGX:COMI) symbol forms; bare tickers
@@ -42,10 +48,6 @@ def register(mcp, providers, settings) -> None:
 
 async def _route(*, parsed, market, chain, providers, source, limit) -> dict:
     async def call(p):
-        if parsed is None and p.name == "fmp":
-            # fmp.news requires a symbol: no global feed. NotFound makes
-            # route_and_call skip fmp cleanly instead of passing it None.
-            raise NotFound("fmp: no global news feed (symbol required)")
         return await p.news(parsed, limit)
 
     items = await route_and_call(market=market, chain=chain, providers=providers,

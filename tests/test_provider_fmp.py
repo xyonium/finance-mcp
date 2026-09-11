@@ -118,15 +118,18 @@ async def test_financial_report_unknown_statement(monkeypatch):
 
 
 @respx.mock
-async def test_news_stock_path_with_limit(monkeypatch):
-    respx.get("https://financialmodelingprep.com/stable/news/stock").respond(
-        200, json=[{"title": "Apple ships", "symbols": ["AAPL"],
-                    "url": "https://example.com/a"}])
+async def test_news_short_circuits_free_tier_paywall(monkeypatch):
+    """FMP free-key tier paywalls every news endpoint (HTTP 402 Restricted
+    Endpoint, live-verified 2026-09-11), so news() must raise NotFound without
+    issuing any HTTP call — letting route_and_call fall through to the next
+    source."""
+    from unified_finance_mcp.errors import NotFound
+    route = respx.get("https://financialmodelingprep.com/stable/news/stock").respond(
+        200, json=[{"title": "should never be fetched"}])
     p = make_provider(monkeypatch)
-    items = await p.news(parse_symbol("AAPL"), limit=5)
-    assert items[0]["title"] == "Apple ships"
-    params = respx.calls[0].request.url.params
-    assert params["symbols"] == "AAPL" and params["limit"] == "5"
+    with pytest.raises(NotFound, match="paywalled|402"):
+        await p.news(parse_symbol("AAPL"), limit=5)
+    assert not route.called, "news() must not hit the network on free-tier keys"
 
 
 @respx.mock

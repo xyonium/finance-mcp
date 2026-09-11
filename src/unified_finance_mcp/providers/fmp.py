@@ -5,6 +5,15 @@ placeholder "rotated-by-upstream" when a base-url override (api-key-rotator)
 injects the real key upstream — see spec section 3.3. Endpoint paths follow
 https://financialmodelingprep.com/developer/docs (stable), which names the
 history endpoint `historical-price-eod/light` and cashflow `cash-flow-statement`.
+
+Free-key tier (live-verified 2026-09-11, both via api-key-rotator and direct):
+`profile`, `quote`, `historical-price-eod/{light,full}`, `income-statement`,
+`balance-sheet-statement`, `cash-flow-statement`, `search-name` all return 200;
+every news endpoint (`news/stock`, `news/stock-latest`, `news/crypto-latest`)
+is paywalled — HTTP 402 "Restricted Endpoint", and invalid keys get 401 on the
+same routes. Institutional-ownership / insider-trading / *-calendar are NOT in
+the verified matrix and are still attempted live; a 402 there folds into the
+standard RateLimited error dict without breaking routing.
 """
 from __future__ import annotations
 
@@ -149,7 +158,14 @@ class FmpProvider(Provider):
         return await self._get(path, symbol=parsed.fmp(), period=period)
 
     async def news(self, parsed: ParsedSymbol, limit: int = 10) -> list[dict]:
-        return await self._get("news/stock", symbols=parsed.fmp(), limit=limit)
+        # FMP free-key tier: every news endpoint returns HTTP 402 Restricted
+        # Endpoint (live-verified 2026-09-11). Short-circuit with NotFound so
+        # route_and_call's auto chain falls through to alphavantage/marketaux/
+        # yahoo without burning a request on a guaranteed 402; explicit
+        # source="fmp" returns a clean not_found error dict.
+        raise NotFound(
+            "fmp: news endpoints are paywalled on free-tier keys "
+            "(HTTP 402 Restricted Endpoint); use alphavantage/marketaux/yahoo")
 
     async def ownership(self, parsed: ParsedSymbol, kind: str) -> list[dict]:
         if kind == "institutional":
