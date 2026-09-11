@@ -26,6 +26,16 @@ series, SEC EDGAR, S&P Capital IQ, gildata screener data, and more).
 The unified tools accept futu (`HK.00700`), Yahoo (`0700.HK`, `COMI.CA`) and
 TradingView (`EGX:COMI`) symbol forms; bare tickers default to US.
 
+## Architecture
+
+<img src="docs/architecture.svg" alt="unified-finance-mcp architecture" width="1000">
+
+One server, two faces: the 18 unified tools route through a market-aware
+auto-router to the external providers (solid lines), while the 53 mounted
+`futu-opend-mcp` tools attach directly to a running Futu OpenD gateway
+(dashed). Badges 1–8 on the tool boxes map to the routing chains in the
+legend. Editable source: [docs/architecture.drawio](docs/architecture.drawio).
+
 ## Install
 
 Requires Python ≥ 3.10.
