@@ -179,6 +179,94 @@ class YahooProvider(Provider):
                 "held_percent_institutions": info.get("heldPercentInstitutions"),
                 "source": self.name}
 
+    @staticmethod
+    def _events_from_calendar(cal: dict) -> list[dict]:
+        # t.calendar keys are title-cased ("Dividend Date", "Earnings High");
+        # normalize to snake_case and drop None values. Scalars only — the
+        # "Earnings Date" list-of-dates is not a /split/dividend event.
+        def snake(s: str) -> str:
+            return s.lower().replace(" ", "_").replace("-", "_")
+        def pick(dict_in):
+            out = {}
+            for k, v in dict_in.items():
+                if v is None:
+                    continue
+                # MCP replies go over JSON-RPC: date/datetime objects must be
+                # stringified or the encoder will raise TypeError downstream.
+                if hasattr(v, "isoformat"):
+                    v = v.isoformat()
+                out[snake(k)] = v
+            return out
+        out: list[dict] = []
+        div = pick({"date": cal.get("Dividend Date"),
+                    "ex_date": cal.get("Ex-Dividend Date")})
+        if div:
+            out.append({"kind": "dividend", **div, "source": "yahoo"})
+        earn_dates = cal.get("Earnings Date") or []
+        earn = pick({"date": earn_dates[0] if earn_dates else None,
+                     "eps_estimate_avg": cal.get("Earnings Average"),
+                     "eps_estimate_high": cal.get("Earnings High"),
+                     "eps_estimate_low": cal.get("Earnings Low"),
+                     "revenue_estimate_avg": cal.get("Revenue Average"),
+                     "revenue_estimate_high": cal.get("Revenue High"),
+                     "revenue_estimate_low": cal.get("Revenue Low")})
+        if earn and earn.get("date") is not None:
+            out.append({"kind": "earnings", **earn, "source": "yahoo"})
+        return out
+
+    async def dividend_split_history(self, parsed: ParsedSymbol) -> dict:
+        t = await self._ticker(parsed)
+
+        def fetch():
+            divs = getattr(t, "dividends", None)
+            sp = getattr(t, "splits", None)
+            def series_records(s, kind):
+                if s is None or (hasattr(s, "empty") and s.empty):
+                    return []
+                return [{"kind": kind,
+                         "date": str(idx)[:10],
+                         "value": float(val),
+                         "source": "yahoo"} for idx, val in s.items()]
+            cal = None
+            try:
+                cal = t.calendar or None  # dict or None/empty-dict
+            except Exception:  # noqa: BLE001 - flaky on some tickers
+                cal = None
+            events = self._events_from_calendar(cal) if cal else []
+            return {**{k: v for k, v in
+                       {"dividends": series_records(divs, "dividend"),
+                        "splits": series_records(sp, "split")}.items()},
+                    "next_events": events}
+
+        out = await self._run(fetch)
+        if not out["dividends"] and not out["splits"] and not out["next_events"]:
+            raise NotFound(f"yahoo: no dividend/split/earnings dates for {parsed.yahoo()}")
+        return {"symbol": parsed.yahoo(), **out, "source": self.name}
+
+    async def earnings_history(self, parsed: ParsedSymbol, limit: int = 12) -> list[dict]:
+        t = await self._ticker(parsed)
+
+        def fetch():
+            df = getattr(t, "earnings_dates", None)
+            if df is None or (hasattr(df, "empty") and df.empty):
+                return []
+            df = df.reset_index()
+            df.columns = [str(c).lower().replace(" ", "_").replace("(%)", "_pct")
+                          .replace("%", "_pct").strip("_") for c in df.columns]
+            date_col = "earnings_date" if "earnings_date" in df.columns else df.columns[0]
+            df = df.astype(object).where(pd.notna(df), None)
+            rows = []
+            for _, row in df.iterrows():
+                rec = row.to_dict()
+                rec["date"] = str(rec.pop(date_col, rec.get("date")))[:10]
+                rows.append(rec)
+            return rows
+
+        rows = await self._run(fetch)
+        if not rows:
+            raise NotFound(f"yahoo: no earnings history for {parsed.yahoo()}")
+        return [{**r, "source": self.name} for r in rows[:limit]]
+
     async def analyst_estimates(self, parsed: ParsedSymbol) -> dict:
         t = await self._ticker(parsed)
 

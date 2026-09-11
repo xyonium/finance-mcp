@@ -232,6 +232,29 @@ class FmpProvider(Provider):
             raise NotFound(f"fmp: no analyst estimates for {parsed.fmp()}")
         return out
 
+    async def dividend_split_history(self, parsed: ParsedSymbol) -> dict:
+        """Company actions via stable endpoints (not yet in verified free matrix):
+        /stable/dividends + /stable/splits. 402 folds into RateLimited."""
+        out: dict = {"symbol": parsed.fmp(), "source": self.name}
+        for key, path in (("dividends", "dividends"), ("splits", "splits")):
+            try:
+                out[key] = await self._get(path, symbol=parsed.fmp())
+            except ProviderError:
+                out[key] = []
+        if not out["dividends"] and not out["splits"]:
+            raise NotFound(f"fmp: no dividends/splits for {parsed.fmp()}")
+        out["next_events"] = []
+        return out
+
+    async def earnings_history(self, parsed: ParsedSymbol, limit: int = 12) -> list[dict]:
+        """Historical earnings + surprises (stable `earnings`, 402 folds)."""
+        rows = await self._get("earnings", symbol=parsed.fmp())
+        if isinstance(rows, dict):
+            # Defensive: `earnings` sometimes returns {symbol, earnings: [...]}.
+            rows = rows.get("earnings") or []
+        return [{**(r if isinstance(r, dict) else {}), "source": self.name}
+                for r in rows[:limit]]
+
     async def screener(self, market: str = "US", filters: dict | None = None,
                        sort: str = "market_cap", order: str = "desc",
                        limit: int = 25) -> list[dict]:

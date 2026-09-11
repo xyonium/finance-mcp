@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from unified_finance_mcp.config import get_settings
+from unified_finance_mcp.errors import NotFound
 from unified_finance_mcp.providers.yahoo import YahooProvider
 from unified_finance_mcp.symbols import parse_symbol
 
@@ -334,3 +335,96 @@ async def test_ownership_insider_summary_empty(monkeypatch):
     t.insider_purchases = None
     p = make_provider(monkeypatch, t)
     assert await p.ownership(parse_symbol("AAPL"), "insider_summary") == []
+
+
+# ── dividend_split_history / earnings_history ───────────────────────────────
+
+async def test_dividend_split_history_full_payload(monkeypatch):
+    import datetime as _dt
+
+    import pandas as pd
+    t = MagicMock()
+    t.dividends = pd.Series(
+        [0.26, 0.27],
+        index=pd.to_datetime(["2026-05-11", "2026-08-10"]))
+    t.splits = pd.Series([4.0], index=pd.to_datetime(["2020-08-31"]))
+    t.calendar = {"Dividend Date": _dt.date(2026, 8, 13),
+                  "Ex-Dividend Date": _dt.date(2026, 8, 10),
+                  "Earnings Date": [_dt.date(2026, 10, 30)],
+                  "Earnings High": 2.07, "Earnings Low": 1.93,
+                  "Earnings Average": 1.98124,
+                  "Revenue High": 117219700000, "Revenue Low": 112248100000,
+                  "Revenue Average": 113624521680}
+    p = make_provider(monkeypatch, t)
+    out = await p.dividend_split_history(parse_symbol("AAPL"))
+    assert out["symbol"] == "AAPL" and out["source"] == "yahoo"
+    kinds = [e["kind"] for e in out["next_events"]]
+    assert kinds == ["dividend", "earnings"]
+    assert out["dividends"][-1] == {"kind": "dividend", "date": "2026-08-10",
+                                    "value": 0.27, "source": "yahoo"}
+    assert out["splits"] == [{"kind": "split", "date": "2020-08-31",
+                              "value": 4.0, "source": "yahoo"}]
+    earn = out["next_events"][1]
+    # Dates must come back ISO-stringified for JSON-RPC (live-verified bug fix).
+    assert earn["date"] == "2026-10-30"
+    assert out["next_events"][0]["date"] == "2026-08-13"
+    assert out["next_events"][0]["ex_date"] == "2026-08-10"
+    assert earn["eps_estimate_avg"] == 1.98124
+    assert earn["revenue_estimate_avg"] == 113624521680
+
+
+async def test_dividend_split_history_no_calendar(monkeypatch):
+    import pandas as pd
+    t = MagicMock()
+    t.dividends = pd.Series([0.5], index=pd.to_datetime(["2025-01-10"]))
+    t.splits = pd.Series([], dtype=float)
+    t.calendar = None  # some tickers 404 on calendar
+    p = make_provider(monkeypatch, t)
+    out = await p.dividend_split_history(parse_symbol("AAPL"))
+    assert out["next_events"] == []
+    assert out["dividends"][0]["value"] == 0.5
+
+
+async def test_dividend_split_history_nothing_raises_not_found(monkeypatch):
+    t = MagicMock()
+    t.dividends = None
+    t.splits = None
+    t.calendar = None
+    p = make_provider(monkeypatch, t)
+    with pytest.raises(NotFound):
+        await p.dividend_split_history(parse_symbol("AAPL"))
+
+
+async def test_earnings_history_maps_frame(monkeypatch):
+    import pandas as pd
+    t = MagicMock()
+    t.earnings_dates = pd.DataFrame(
+        {"EPS Estimate": [1.98, 1.89], "Reported EPS": [None, 2.02],
+         "Surprise(%)": [None, 6.74]},
+        index=pd.to_datetime(["2026-10-29", "2026-07-30"]).rename("Earnings Date"))
+    p = make_provider(monkeypatch, t)
+    rows = await p.earnings_history(parse_symbol("AAPL"), limit=12)
+    assert rows[0]["date"] == "2026-10-29" and rows[0]["eps_estimate"] == 1.98
+    assert rows[0]["reported_eps"] is None
+    assert rows[1]["reported_eps"] == 2.02 and rows[1]["surprise_pct"] == 6.74
+    assert rows[0]["source"] == "yahoo"
+
+
+async def test_earnings_history_empty_raises_not_found(monkeypatch):
+    t = MagicMock()
+    t.earnings_dates = None
+    p = make_provider(monkeypatch, t)
+    with pytest.raises(NotFound):
+        await p.earnings_history(parse_symbol("AAPL"))
+
+
+async def test_earnings_history_limit_applied(monkeypatch):
+    import pandas as pd
+    t = MagicMock()
+    t.earnings_dates = pd.DataFrame(
+        {"EPS Estimate": [1.0] * 20, "Reported EPS": [1.1] * 20,
+         "Surprise(%)": [10.0] * 20},
+        index=pd.date_range("2025-01-01", periods=20, freq="30D"))
+    p = make_provider(monkeypatch, t)
+    rows = await p.earnings_history(parse_symbol("AAPL"), limit=5)
+    assert len(rows) == 5

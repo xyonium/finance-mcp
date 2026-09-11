@@ -308,8 +308,8 @@ def test_module_registered_and_mounts_tool():
     from mcp.server.fastmcp import FastMCP
 
     assert "diagnostics" in tools_pkg.ALL_MODULES
-    assert len(tools_pkg.ALL_MODULES) == 17
-    assert len(set(tools_pkg.ALL_MODULES)) == 17  # no duplicates
+    assert len(tools_pkg.ALL_MODULES) == 19
+    assert len(set(tools_pkg.ALL_MODULES)) == 19  # no duplicates
 
     mcp = FastMCP("t16-test")
     diagnostics.register(mcp, None, get_settings())

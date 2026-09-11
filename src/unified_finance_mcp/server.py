@@ -54,6 +54,7 @@ INSTRUCTIONS = (
     "get_company_info, get_financial_report, get_news, get_technical_indicators, "
     "run_screener, get_ownership, get_events_calendar, get_economic_data, "
     "search_symbols, get_option_chain, get_short_interest, get_analyst_estimates, "
+    "get_dividend_split_history, get_earnings_history, "
     "get_company_risk_cn, quant_backtest, kimi_datasource, "
     "get_service_status, tv_scan, tv_analyze, egx_market) — they auto-route across "
     "sources by market coverage; the accepted `source` values vary per tool (each "
