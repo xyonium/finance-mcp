@@ -61,6 +61,8 @@ present, and auto-routing skips unavailable sources.
 
 ### FMP
 
+Free API key: <https://site.financialmodelingprep.com/register>
+
 | Variable | Purpose | Default |
 |---|---|---|
 | `FMP_API_KEY` | FMP API key | — |
@@ -68,17 +70,21 @@ present, and auto-routing skips unavailable sources.
 
 ### Alpha Vantage
 
+Free API key: <https://www.alphavantage.co/support/#api-key>
+
 | Variable | Purpose | Default |
 |---|---|---|
 | `ALPHAVANTAGE_API_KEY` | Alpha Vantage API key | — |
-| `ALPHAVANTAGE_BASE_URL` | Endpoint override (rotator-friendly) | `https://www.alphavantage.co` |
+| `ALPHAVANTAGE_BASE_URL` | Endpoint override (rotator-friendly), e.g. `http://api-key-rotator:8788/alphavantage` | `https://www.alphavantage.co` |
 
 ### marketaux
+
+Free API token: <https://www.marketaux.com/register>
 
 | Variable | Purpose | Default |
 |---|---|---|
 | `MARKETAUX_API_TOKEN` | marketaux news API token | — |
-| `MARKETAUX_BASE_URL` | Endpoint override (rotator-friendly) | `https://api.marketaux.com` |
+| `MARKETAUX_BASE_URL` | Endpoint override (rotator-friendly), e.g. `http://api-key-rotator:8788/marketaux` | `https://api.marketaux.com` |
 
 ### Kimi Datasource
 
@@ -87,9 +93,9 @@ Exactly one way needs to be configured for the kimi tools to activate.
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `KIMI_PROXY_URL` | **Primary.** URL of the `kimi-datasource-proxy` container, e.g. `http://kimi-datasource-proxy:8788/coding/v1/tools`. The proxy holds and refreshes the credentials; the client sends no `Authorization` header | — |
+| `KIMI_PROXY_URL` | **Primary.** URL of a proxy that injects credentials for you — e.g. the CLIProxyAPI [`cliproxy-kimi-tools`](https://github.com/xyonium/cliproxy-kimi-tools) plugin at `http://cli-proxy-api:8317/v0/management/kimi/tools`, or a standalone `kimi-datasource-proxy` container. When `KIMI_ACCESS_TOKEN` is also set, it is sent as `Authorization: Bearer …` (the CLIProxyAPI management key) and the proxy strips it before talking to Kimi. | — |
 | `KIMI_AUTH_FILE` | **Fallback.** Path (or glob) to a cliproxy kimi credential JSON, e.g. `/mnt/docker/cliproxy/auths/kimi-*.json` — the first file with `disabled != true` is used; the client self-refreshes the token when it expires | — |
-| `KIMI_ACCESS_TOKEN` | **Fallback.** Direct Kimi Code token (standalone use, no cliproxy/proxy); no refresh logic | — |
+| `KIMI_ACCESS_TOKEN` | **Fallback (direct).** A Kimi Code token used directly against `KIMI_BASE_URL`, with no refresh logic. *With `KIMI_PROXY_URL` set:* doubles as the proxy's management key (see above). | — |
 | `KIMI_BASE_URL` | Upstream endpoint used with the two fallback paths | `https://api.kimi.com/coding/v1/tools` |
 | `KIMI_FILES_DIR` | Where datasource result files are written | `/tmp/unified_finance_mcp` |
 
