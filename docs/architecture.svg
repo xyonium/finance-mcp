@@ -25,7 +25,7 @@
   <!-- Row 2: server -->
   <rect class="box" x="40" y="96" width="1080" height="272" fill="#ffffff" stroke="#666"/>
   <text class="title" x="580" y="113" text-anchor="middle" font-size="14">unified-finance-mcp</text>
-  <text class="ts" x="580" y="129" text-anchor="middle">23 unified tools (auto-routed) + 53 futu-opend-mcp tools (mounted) = 76</text>
+  <text class="ts" x="580" y="129" text-anchor="middle">19 unified tools (auto-routed) + 53 futu-opend-mcp tools (mounted) = 72</text>
 
   <!-- group: market data -->
   <rect x="60" y="140" width="470" height="210" fill="#f8f9fa" stroke="#999" rx="4"/>
@@ -51,8 +51,8 @@
   <text class="ts" x="435" y="246" text-anchor="middle">kimi_datasource (list…call)</text>
   <text class="ts" x="435" y="260" text-anchor="middle">get_company_risk_cn</text>
   <text class="ts" x="435" y="272" text-anchor="middle">tv_scan · tv_analyze · egx</text>
-  <text class="ts" x="435" y="285" text-anchor="middle">opt_chain · short_int · analyst_est</text>
-  <text class="ts" x="435" y="298" text-anchor="middle">div_split_hist · earn_hist</text>
+  <text class="ts" x="435" y="285" text-anchor="middle">get_symbol_intel</text>
+  <text class="ts" x="435" y="298" text-anchor="middle">(options·short·analyst·div·earn)</text>
   <circle class="bd" cx="502" cy="212" r="6.5"/><text class="bdt" x="502" y="215">6</text>
 
   <!-- group: news -->
@@ -157,7 +157,7 @@
   <text class="ts" x="646" y="634">economic kimi→av</text>
   <circle class="bd" cx="632" cy="647" r="6.5"/><text class="bdt" x="632" y="650">6</text>
   <text class="ts" x="646" y="650">containers — quant_backtest · kimi_datasource · risk_cn · tv_scan · tv_analyze · egx</text>
-  <text class="ts" x="646" y="660">opt_chain · short_int · analyst_est · div_split_hist · earn_hist</text>
+  <text class="ts" x="646" y="660">get_symbol_intel (options·short·analyst·dividends·earnings)</text>
   <circle class="bd" cx="632" cy="663" r="6.5"/><text class="bdt" x="632" y="666">7</text>
   <text class="ts" x="646" y="666">news — symbol av→yahoo→marketaux · global marketaux</text>
   <circle class="bd" cx="632" cy="679" r="6.5"/><text class="bdt" x="632" y="682">8</text>

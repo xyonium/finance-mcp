@@ -1,9 +1,16 @@
-"""Grouped futu mount: 9 domain containers over the 53 futu-opend-mcp tools.
+"""Grouped futu mount: 7 domain containers over the 53 futu-opend-mcp tools.
 
 Active when ``FINANCE_MCP_FUTU_MOUNT_LAYOUT=grouped`` (default ``flat``
 mounts every futu-opend-mcp tool side-by-side, unchanged). Grouped mode
-folds the futu tools into 9 action-routed containers so the primary tool
-list stays readable for the model (76 -> ~32 tools).
+folds the futu tools into 6 primary containers (market-analysis related:
+market, fundamentals, corporate, capital, options, macro) plus one
+secondary reference container (`futu_reference`) for everything lookup- or
+profile-shaped that is not market analysis: company profile/executives/
+operational-efficiency, sector & industry-chain structure, and the
+institution directory/profile/holdings reverse lookups. The model sees
+7 futu tools instead of 53 and pulls reference data on demand via
+`action=list|describe|call` (76 -> 28 tools total, then 47 of the futu
+names collapse into the containers' hints).
 
 The vendored skill pack is never patched: a container is a thin async
 wrapper that holds the futu tool's own fn and runs it under a timeout.
@@ -81,6 +88,7 @@ _DOMAINS: dict[str, str] = {
 }
 
 _CONTAINERS: dict[str, list[str]] = {
+    # primary: market-analysis related (what a trading agent reaches for)
     "futu_market": ["get_kline", "get_market_state", "search_quote",
                     "search_news", "futu_get_stock_info", "screen_stocks"],
     "futu_fundamentals": ["get_financial_statements", "get_revenue_breakdown",
@@ -90,8 +98,6 @@ _CONTAINERS: dict[str, list[str]] = {
     "futu_corporate": ["get_corporate_actions", "get_shareholder_overview",
                        "get_holding_changes", "get_holder_detail",
                        "get_institutional_holdings", "get_insider_data"],
-    "futu_company": ["get_company_profile", "get_company_executives",
-                     "get_executive_background", "get_operational_efficiency"],
     "futu_capital": ["get_capital_flow", "get_capital_distribution",
                      "get_top_brokers", "get_short_data"],
     "futu_options": ["resolve_option_code", "futu_get_option_chain",
@@ -99,14 +105,17 @@ _CONTAINERS: dict[str, list[str]] = {
                      "get_option_volatility", "get_option_strategy_analysis",
                      "get_option_underlying", "get_warrant", "get_future_info",
                      "get_reference_securities"],
-    "futu_sectors": ["get_plate_list", "get_plate_stocks", "get_owner_plate",
-                     "get_industrial_chains", "get_industrial_plate"],
-    "futu_institutions": ["get_institution_list", "get_institution_profile",
-                          "get_institution_holdings",
-                          "get_institution_distribution"],
     "futu_macro": ["get_economic_calendar", "get_macro_indicator",
                    "get_fed_watch", "get_dividend_calendar", "get_ipo_list",
                    "get_quota_status"],
+    # secondary: reference/lookup data, not market analysis — pulled on demand
+    "futu_reference": ["get_company_profile", "get_company_executives",
+                       "get_executive_background", "get_operational_efficiency",
+                       "get_plate_list", "get_plate_stocks", "get_owner_plate",
+                       "get_industrial_chains", "get_industrial_plate",
+                       "get_institution_list", "get_institution_profile",
+                       "get_institution_holdings",
+                       "get_institution_distribution"],
 }
 
 assert not ({n for names in _CONTAINERS.values() for n in names} ^ set(_DOMAINS)), (

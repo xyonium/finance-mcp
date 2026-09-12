@@ -3,7 +3,6 @@ from __future__ import annotations
 
 ALL_MODULES: list[str] = ["quote", "history", "fundamentals", "news",
                           "technicals", "screener", "ownership", "calendar",
-                          "macro", "search", "options", "short", "estimates",
-                          "dividends", "earnings",
+                          "macro", "search", "intel",
                           "futu_containers",
                           "containers", "backtest", "kimi", "diagnostics"]

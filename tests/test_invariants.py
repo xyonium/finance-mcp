@@ -33,8 +33,7 @@ EXPECTED_UNIFIED = {
     "get_quote", "get_history", "get_company_info", "get_financial_report",
     "get_news", "get_technical_indicators", "run_screener", "get_ownership",
     "get_events_calendar", "get_economic_data", "search_symbols",
-    "get_option_chain", "get_short_interest", "get_analyst_estimates",
-    "get_dividend_split_history", "get_earnings_history",
+    "get_symbol_intel",
     "get_company_risk_cn", "quant_backtest", "kimi_datasource",
     "get_service_status", "tv_scan", "tv_analyze", "egx_market",
 }
@@ -58,11 +57,11 @@ def test_expected_tool_surface():
 
 
 def test_expected_tool_count_exact():
-    """22 prior unified tools + get_service_status = exactly 23."""
+    """18 prior unified tools + get_service_status = exactly 19."""
     mcp = build_mcp(get_settings())
     unified = [t.name for t in mcp._tool_manager.list_tools()
                if not t.fn.__module__.startswith("futu_opend_mcp")]
-    assert len(unified) == 23
+    assert len(unified) == 19
 
 
 def test_futu_tools_mounted():

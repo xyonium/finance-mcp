@@ -7,15 +7,19 @@
 
 One MCP server for finance data: Yahoo Finance, TradingView, FMP, Alpha Vantage,
 marketaux, Futu OpenD and the Kimi Datasource meta-source behind a single tool
-surface, with market-aware auto-routing across sources.
+surface, with market-aware auto-routing across sources. **`auto` means the
+model stops choosing providers**: ask for a quote, a financial statement or
+an option chain and the server picks the sources that cover that market,
+tries them in chain order, and returns the first non-empty answer — the
+model calls one tool, not four.
 
 ## Features
 
 | Surface | Tools | Notes |
 |---|---|---|
-| Unified tools | 23 | Domain-organized, cross-source tools with a `source` parameter: `auto` routes by market coverage, or pin one source explicitly |
+| Unified tools | 19 | Domain-organized, cross-source tools with a `source` parameter — `auto` routes by market coverage, or pin one source explicitly. Per-symbol indicator queries (options / short / analyst / dividends / earnings) share one container: `get_symbol_intel(kind=…)` |
 | **TradingView containers** | 3 | `tv_scan`, `tv_analyze`, `egx_market` — scanner/analysis containers selected by `action` (unknown actions return the available list) |
-| **Futu OpenD mount** | 53 | All `futu-opend-mcp` tools are mounted alongside the unified tools (`get_snapshot`, `get_kline`, `futu_get_option_chain`, …) when OpenD is configured. `FINANCE_MCP_FUTU_MOUNT_LAYOUT=grouped` folds them into 9 action-routed domain containers instead |
+| **Futu OpenD mount** | 53 | All `futu-opend-mcp` tools mounted alongside the unified ones when OpenD is configured. `FINANCE_MCP_FUTU_MOUNT_LAYOUT=grouped` folds them into 6 market-analysis containers + 1 on-demand reference container (`action=list/describe/call`), shrinking the surface from 76 to 28 tools |
 | **L2 self-describing containers** | 2 | `quant_backtest` and `kimi_datasource` keep secondary functionality out of the primary tool list; call with `action='help'` / `action='list'` to discover them |
 | **Diagnostics** | 1 | `get_service_status` reports provider availability, coverage and mounted tool counts (read-only, no network I/O) |
 
@@ -30,10 +34,12 @@ TradingView (`EGX:COMI`) symbol forms; bare tickers default to US.
 
 <img src="docs/architecture.svg" alt="unified-finance-mcp architecture" width="1000">
 
-One server, two faces: the 23 unified tools route through a market-aware
+One server, two faces: the 19 unified tools route through a market-aware
 auto-router to the external providers (solid lines), while the 53 mounted
 `futu-opend-mcp` tools attach directly to a running Futu OpenD gateway
-(dashed). Badges 1–8 on the tool boxes map to the routing chains in the
+(dashed; shown in the default `flat` layout — `grouped` folds them into 6
+market-analysis containers + 1 on-demand reference container, 28 tools
+total). Badges 1–8 on the tool boxes map to the routing chains in the
 legend. Editable source: [docs/architecture.drawio](docs/architecture.drawio).
 
 ## Install
@@ -68,7 +74,7 @@ present, and auto-routing skips unavailable sources.
 | `FINANCE_MCP_MAX_RETRIES` | HTTP retry count | `3` |
 | `FINANCE_MCP_MIN_HOST_DELAY` | Minimum delay between requests to one host (seconds) | `0.5` |
 | `FINANCE_MCP_FUTU` | `0` disables the Futu OpenD mount entirely | `true` |
-| `FINANCE_MCP_FUTU_MOUNT_LAYOUT` | `flat` mounts all 53 futu-opend-mcp tools side-by-side; `grouped` folds them into 9 `futu_*` domain containers (`action=list/describe/call`) so the primary tool list stays short (76 → 32 tools) | `flat` |
+| `FINANCE_MCP_FUTU_MOUNT_LAYOUT` | `flat` mounts all 53 futu-opend-mcp tools side-by-side; `grouped` folds them into 6 market-analysis `futu_*` containers + 1 on-demand `futu_reference` container (`action=list/describe/call`), 76 → 28 tools | `flat` |
 
 ### FMP
 
@@ -231,11 +237,7 @@ also removes the Python ≥3.14 wrapper constraint mcpo hit).
 | `get_events_calendar` | Earnings, dividends, IPO calendar (date range optional) |
 | `get_economic_data` | Macro series: GDP, CPI, unemployment, rates, treasury yields, … |
 | `search_symbols` | Search symbols by company name or ticker |
-| `get_option_chain` | Option chain for one expiration (`YYYY-MM-DD`, nearest by default): calls/puts with IV/OI |
-| `get_short_interest` | Short-interest snapshot: shares short, days-to-cover, % of float |
-| `get_analyst_estimates` | Analyst earnings/revenue estimates, price targets, recommendations |
-| `get_dividend_split_history` | Dividend/split history plus next dividend & earnings dates (yahoo `calendar`) |
-| `get_earnings_history` | Historical earnings dates: EPS estimate vs reported + surprise % |
+| `get_symbol_intel` | Per-symbol indicator queries by `kind`: `options` (chain at one `expiration`, calls/puts IV/OI) · `short` (shares short, days-to-cover, % of float) · `analyst` (estimates, price targets, recommendations) · `dividends` (history + next dates) · `earnings` (EPS est. vs reported + surprise %, `limit` rows) |
 | `get_company_risk_cn` | CN company risk profile from tianyancha (via kimi) |
 | `quant_backtest` | Strategy backtest container: `run` / `compare` / `walk_forward`; `action='help'` for the full parameter guide |
 | `kimi_datasource` | Self-describing datasource access: `action='list'` / `'describe'` / `'call'` |
@@ -246,10 +248,13 @@ also removes the Python ≥3.14 wrapper constraint mcpo hit).
 
 Plus the 53 mounted `futu-opend-mcp` tools (`get_snapshot`, `get_kline`,
 `futu_get_option_chain`, `get_capital_flow`, …) for HK/CN/US depth from OpenD —
-or, with `FINANCE_MCP_FUTU_MOUNT_LAYOUT=grouped`, nine `futu_*` domain
-containers (`futu_market`, `futu_fundamentals`, `futu_corporate`,
-`futu_company`, `futu_capital`, `futu_options`, `futu_sectors`,
-`futu_institutions`, `futu_macro`) selected by `action=list | describe | call`.
+or, with `FINANCE_MCP_FUTU_MOUNT_LAYOUT=grouped`, seven `futu_*` containers
+selected by `action=list | describe | call`: six market-analysis domains
+(`futu_market`, `futu_fundamentals`, `futu_corporate`, `futu_capital`,
+`futu_options`, `futu_macro`) plus `futu_reference`, which folds everything
+not market-analysis related (company profile/executives, sector & industry
+chains, the institution directory and its reverse holdings lookups) out of
+the primary list and behind one on-demand container.
 
 ## Development
 
@@ -260,9 +265,10 @@ pytest -q -m "not integration"      # unit suite (integration marker needs live 
 ```
 
 Layout: `src/unified_finance_mcp/` — `providers/` (Yahoo, TradingView, FMP,
-Alpha Vantage, marketaux, Futu bridge, Kimi), `tools/` (the 20 tool modules
-registered from `ALL_MODULES`), `config.py` (env `Settings`), `http.py`
-(polite per-host rate-limited client).
+Alpha Vantage, marketaux, Futu bridge, Kimi), `tools/` (the 16 tool modules
+registered from `ALL_MODULES`, including `intel.py` = `get_symbol_intel`
+and `futu_containers.py` = the grouped futu domain containers), `config.py`
+(env `Settings`), `http.py` (polite per-host rate-limited client).
 
 ## Release process
 
