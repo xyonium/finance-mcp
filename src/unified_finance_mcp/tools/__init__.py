@@ -5,4 +5,5 @@ ALL_MODULES: list[str] = ["quote", "history", "fundamentals", "news",
                           "technicals", "screener", "ownership", "calendar",
                           "macro", "search", "options", "short", "estimates",
                           "dividends", "earnings",
+                          "futu_containers",
                           "containers", "backtest", "kimi", "diagnostics"]

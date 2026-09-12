@@ -79,8 +79,14 @@ def FUTU_TOOLS_AVAILABLE() -> bool:
     return True
 
 
-def mount_futu_tools(mcp) -> list[str]:
-    """Re-register every futu-opend-mcp tool onto `mcp`; return mounted names.
+def mount_futu_tools(mcp, layout: str = "flat") -> list[str]:
+    """Mount futu-opend-mcp tools onto `mcp`; return mounted names.
+
+    ``layout="flat"`` registers every futu tool side-by-side (default).
+    ``layout="grouped"`` registers nothing here — tools register the nine
+    ``futu_*`` domain containers instead (tools/futu_containers.py), keeping
+    the primary tool list short for the model. The unified quote/history
+    chains (FutuProvider below) are layout-independent.
 
     Importing ``futu_opend_mcp.tools`` fills the package's FastMCP singleton
     via @mcp.tool registration side effects. Importing that package in an
@@ -88,6 +94,12 @@ def mount_futu_tools(mcp) -> list[str]:
     guard swallows; inside the function we skip defensively instead, so a
     bare `build_mcp()` can still serve unified tools without futu.
     """
+    if layout == "grouped":  # anything else (incl. unknown) falls back to flat
+        if not FUTU_TOOLS_AVAILABLE():
+            log.info("futu_opend_mcp not importable; no futu containers")
+            return []
+        log.info("futu mount layout=grouped: containers registered by tools")
+        return []
     if not FUTU_TOOLS_AVAILABLE():
         log.info("futu_opend_mcp not importable; no futu tools mounted")
         return []
@@ -107,6 +119,39 @@ def mount_futu_tools(mcp) -> list[str]:
         mounted.append(t.name)
     log.info("mounted %d futu-opend-mcp tools", len(mounted))
     return mounted
+
+
+def extract_futu_tools(names, existing_names: set[str]) -> dict:
+    """Resolve futu tools by name to ``{name: (fn, description)}``.
+
+    Used by the grouped containers: the wrapper calls the tool's own fn
+    directly (a skill_runner._run wrapper, i.e. the same callable flat
+    mounting registers), so no vendored code is patched. Names absent from
+    the installed futu_opend_mcp, or already taken in `existing_names`
+    (the unified get_snapshot), are skipped with a warning — a slightly
+    different futu version degrades a container's contents instead of
+    breaking the server build.
+    """
+    if not FUTU_TOOLS_AVAILABLE():
+        log.info("futu_opend_mcp not importable; no futu tools extracted")
+        return {}
+    import futu_opend_mcp.tools  # noqa: F401 - registration side effect
+    from futu_opend_mcp.tools import _base as futu_base
+
+    by_name = {t.name: t for t in futu_base.mcp._tool_manager.list_tools()}
+    out: dict = {}
+    for name in names:
+        if name in existing_names:
+            log.info("futu tool %r already registered (unified chain); "
+                     "not extracted for grouped container", name)
+            continue
+        t = by_name.get(name)
+        if t is None:
+            log.warning("futu tool %r missing in installed futu_opend_mcp; "
+                        "skipped", name)
+            continue
+        out[name] = (t.fn, t.description)
+    return out
 
 
 def _run_skill(category: str, name: str, *args, **kwargs):

@@ -90,7 +90,7 @@ def build_mcp(settings: Settings) -> FastMCP:
             # Expected until Task 3 adds providers/futu_bridge.py; debug, not warning.
             log.debug("futu bridge unavailable (%s); skipping futu tool mount", exc)
         else:
-            futu_bridge.mount_futu_tools(mcp)
+            futu_bridge.mount_futu_tools(mcp, layout=settings.futu_mount_layout)
     return mcp
 
 

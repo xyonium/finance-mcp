@@ -45,6 +45,9 @@ class Settings:
     max_retries: int = field(default_factory=lambda: _env_int("FINANCE_MCP_MAX_RETRIES", 3))
     min_host_delay: float = field(default_factory=lambda: _env_float("FINANCE_MCP_MIN_HOST_DELAY", 0.5))
     futu_enabled: bool = field(default_factory=lambda: _env_bool("FINANCE_MCP_FUTU", True))
+    futu_mount_layout: str = field(
+        default_factory=lambda: _env("FINANCE_MCP_FUTU_MOUNT_LAYOUT", "flat")
+        .strip().lower() or "flat")
     fmp_api_key: str = field(default_factory=lambda: _env("FMP_API_KEY"))
     fmp_base_url: str = field(default_factory=lambda: _env("FMP_BASE_URL", DEFAULT_FMP_BASE_URL))
     alphavantage_api_key: str = field(default_factory=lambda: _env("ALPHAVANTAGE_API_KEY"))

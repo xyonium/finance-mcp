@@ -53,8 +53,8 @@ def make_kimi(monkeypatch):
 
 def test_kimi_module_registered_in_all_modules():
     assert "kimi" in tools_pkg.ALL_MODULES
-    assert len(tools_pkg.ALL_MODULES) == 19
-    assert len(set(tools_pkg.ALL_MODULES)) == 19  # no duplicates
+    assert len(tools_pkg.ALL_MODULES) == 20
+    assert len(set(tools_pkg.ALL_MODULES)) == 20  # no duplicates
 
 
 # ── kimi_datasource ─────────────────────────────────────────────────────────
