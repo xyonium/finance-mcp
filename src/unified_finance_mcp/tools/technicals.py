@@ -22,7 +22,9 @@ TV_CHAIN = ["tradingview"]
 # The AV vocabulary that `summary` aggregates when tv is unavailable.
 CANONICAL_TECHNICALS = frozenset(_TECHNICALS)
 
-_REPORT_HINT = "请检查上游源；indicators 用 RSI,MACD,SMA,EMA,BBANDS,STOCH,ADX,CCI,AROON,OBV"
+_REPORT_HINT = ("请检查上游源；indicators 只能是 RSI,MACD,SMA,EMA,BBANDS,STOCH,"
+                "ADX,CCI,AROON,OBV（无 ATR），且不要和 summary 混传；期货/商品符号请用 "
+                "source='auto' 走 tradingview，alphavantage 不覆盖")
 
 
 # _parse_indicators sentinel for the "summary" mode (vs None = empty/invalid).
@@ -35,14 +37,27 @@ def register(mcp, providers, settings) -> None:
                                        interval: str = "1d", source: str = "auto") -> dict:
         """Technical indicators for one symbol: ratings summary + indicator values.
 
-        `indicators` is "summary" (default: TradingView ratings/oscillators/
-        moving-averages plus all indicator values) or a comma list of indicator
-        names (RSI, MACD, SMA, EMA, BBANDS, STOCH, ADX, CCI, AROON, OBV).
+        `indicators` is either `"summary"` (default: TradingView ratings +
+        oscillator/moving-average values) OR a comma list of indicator names.
+        Do NOT mix them — pass `"summary"` alone, or names without "summary".
+
+        Valid indicator names (anything else is rejected): RSI, MACD, SMA, EMA,
+        BBANDS, STOCH, ADX, CCI, AROON, OBV. There is no "ATR". Wrong example:
+        indicators="summary,RSI,MACD,ATR" → every entry fails. Right:
+        indicators="summary"  or  indicators="RSI,MACD,SMA".
+
         `interval` is 1m/5m/15m/1h/4h/1d/1wk/1mo. `source` may be auto |
-        tradingview | alphavantage. Accepts futu (HK.00700), yahoo (0700.HK,
-        COMI.CA) or TradingView (EGX:COMI) symbol forms; bare tickers default
-        to US. Returns {"data": {...}} on success, or the routing error dict at
-        the top level on failure — callers check `"error" in out`.
+        tradingview | alphavantage. Prefer source="auto"/"tradingview":
+        TradingView computes all indicators in one call for any symbol
+        (including futures like CL=F and EGX). The alphavantage fallback is
+        per-indicator, covers only its equity/forex universe (futures/commodity
+        symbols like CL=F return not_found), and is rate-limited — don't send
+        long indicator lists through it.
+
+        Accepts futu (HK.00700), yahoo (0700.HK, COMI.CA) or TradingView
+        (EGX:COMI) symbol forms; bare tickers default to US. Returns
+        {"data": {...}} on success, or the routing error dict at the top level
+        on failure — callers check `"error" in out`.
         """
         wanted = _parse_indicators(indicators)
         if wanted is None:

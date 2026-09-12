@@ -16,6 +16,16 @@ def register(mcp, providers, settings) -> None:
         Accepts futu (HK.00700), yahoo (0700.HK, COMI.CA) or TradingView
         (EGX:COMI) symbol forms; bare tickers default to US. `source` may be
         auto | futu | yahoo | fmp | alphavantage.
+
+        IMPORTANT (read before batching):
+        - Result is per-symbol partial: each key in `data` either holds a quote
+          or an `error` + `source_errors` block. One symbol failing does NOT
+          fail the others — check each entry, don't discard the whole batch.
+        - Use REAL tickers, not display names/descriptions. `USOIL` is not a
+          tradable symbol anywhere (no source covers it). For WTI crude use
+          the futures `CL=F` or the ETF `USO`; brent is `BZ=F`. Unsure of the
+          ticker? Call `search_symbols` first.
+        - Example: codes=["AAPL", "HK.00700", "CL=F"].
         """
         out: dict[str, dict] = {}
         for code in codes:

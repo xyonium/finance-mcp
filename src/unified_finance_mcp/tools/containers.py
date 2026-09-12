@@ -187,11 +187,20 @@ async def tv_analyze(action: str, symbol: str, exchange: str | None = None,
 
     Actions: summary (key fields of coin), coin (full analysis dict),
     candle_pattern, multi_timeframe, volume_confirmation.
+
+    `symbol` must be a REAL TradingView ticker (optionally exchange-prefixed).
+    It is looked up verbatim — a wrong or display-style symbol returns
+    not_found with no retry. Examples: "NASDAQ:AAPL", "EGX:COMI",
+    "BINANCE:BTCUSDT". For WTI crude use "NYMEX:CL1!" — there is NO "USOIL"
+    symbol on TradingView (TVC:USOIL is a common hallucination; not_found).
+    Unsure of the exact TV ticker? Call `search_symbols` first, then pass the
+    returned symbol here.
     """
     if not isinstance(symbol, str) or not symbol.strip():
         return tool_error("symbol is required for tv_analyze",
-                          hint="pass a TradingView symbol like EGX:COMI, "
-                               "NASDAQ:AAPL, BINANCE:BTCUSDT")
+                          hint="pass a real TradingView symbol like NASDAQ:AAPL, "
+                               "EGX:COMI, BINANCE:BTCUSDT (crude oil is NYMEX:CL1!; "
+                               "USOIL does not exist — verify with search_symbols)")
     if not _known_action(_TV_ANALYZE_ROUTES, action):
         return tool_error(f"unknown action {action!r}",
                           hint=f"可用 action: {sorted(_TV_ANALYZE_ROUTES)}")
