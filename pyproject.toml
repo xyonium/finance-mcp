@@ -1,10 +1,10 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
 name = "unified-finance-mcp"
-version = "0.1.2"
+dynamic = ["version"]
 description = "Unified finance & business MCP server: Yahoo, TradingView, FMP, Alpha Vantage, marketaux and Futu OpenD behind one tool surface."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -38,6 +38,9 @@ unified-finance-mcp = "unified_finance_mcp.server:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/unified_finance_mcp"]
+
+[tool.hatch.version]
+source = "vcs"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
