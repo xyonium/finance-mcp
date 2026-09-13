@@ -1,89 +1,129 @@
 <mxfile host="app.diagrams.net" agent="claude" version="24.0.0" type="device">
   <diagram id="finance-mcp-arch" name="architecture">
-    <mxGraphModel dx="1400" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1160" pageHeight="800" math="0" shadow="0">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1240" pageHeight="748" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
 
-        <!-- row 1: client -->
-        <mxCell id="client" value="MCP client&#10;Claude Code · Claude Desktop · any MCP client" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="490" y="30" width="180" height="50" as="geometry" />
+        <!-- Row 1: client -->
+        <mxCell id="client" value="MCP client&#10;Claude Code · Desktop · any MCP client" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;fontStyle=1;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="490" y="18" width="180" height="46" as="geometry" />
         </mxCell>
 
-        <!-- row 2 (all inside serverBox): tools + router -->
-        <mxCell id="grpMkt" value="Market data (equity &amp; macro)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8f9fa;strokeColor=#999999;fontSize=12;fontStyle=1;verticalAlign=top;spacingTop=3;" vertex="1" parent="1">
-          <mxGeometry x="40" y="120" width="430" height="198" as="geometry" />
+        <!-- Row 2: server frame -->
+        <mxCell id="serverBox" value="unified-finance-mcp&#10;&lt;font style=&quot;font-size:10px&quot;&gt;20 unified tools (auto-routed) + 53 futu-opend-mcp tools (mounted) = 73&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=14;fontStyle=1;verticalAlign=top;spacingTop=8;arcSize=2;" vertex="1" parent="1">
+          <mxGeometry x="40" y="96" width="1080" height="272" as="geometry" />
         </mxCell>
-        <mxCell id="tQ" value="get_quote&#10;get_history" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1"><mxGeometry x="55" y="150" width="130" height="40" as="geometry" /></mxCell>
-        <mxCell id="tF" value="get_company_info&#10;get_financial_report&#10;get_ownership" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1"><mxGeometry x="195" y="150" width="130" height="50" as="geometry" /></mxCell>
-        <mxCell id="tS" value="run_screener&#10;get_technical_indicators" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1"><mxGeometry x="335" y="150" width="122" height="40" as="geometry" /></mxCell>
-        <mxCell id="tC" value="get_events_calendar&#10;search_symbols" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1"><mxGeometry x="55" y="205" width="130" height="40" as="geometry" /></mxCell>
-        <mxCell id="tE" value="get_economic_data" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1"><mxGeometry x="195" y="212" width="130" height="30" as="geometry" /></mxCell>
-        <mxCell id="tBt" value="quant_backtest&#10;(action='help')" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1"><mxGeometry x="335" y="212" width="122" height="40" as="geometry" /></mxCell>
-        <mxCell id="tDiag" value="get_service_status (read-only)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e6e6e6;strokeColor=#666666;fontSize=10;fontColor=#333333;" vertex="1" parent="1"><mxGeometry x="55" y="268" width="402" height="26" as="geometry" /></mxCell>
 
-        <mxCell id="grpNews" value="News" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8f9fa;strokeColor=#999999;fontSize=12;fontStyle=1;verticalAlign=top;spacingTop=3;" vertex="1" parent="1">
-          <mxGeometry x="490" y="120" width="270" height="198" as="geometry" />
+        <!-- group: market data -->
+        <mxCell id="grpMkt" value="Market data (equity &amp; macro)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8f9fa;strokeColor=#999999;fontSize=10;fontStyle=1;verticalAlign=top;spacingTop=4;align=left;spacingLeft=12;" vertex="1" parent="1">
+          <mxGeometry x="60" y="140" width="470" height="210" as="geometry" />
         </mxCell>
-        <mxCell id="tN" value="get_news" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="540" y="150" width="170" height="32" as="geometry" /></mxCell>
-        <mxCell id="tNhint" value="FMP excluded — free keys paywall&#10;all news endpoints (HTTP 402)" style="text;html=1;align=center;fontSize=10;fontColor=#b85450;" vertex="1" parent="1"><mxGeometry x="510" y="192" width="230" height="26" as="geometry" /></mxCell>
-        <mxCell id="tNfutu" value="Chinese 快讯 / flash headlines (热度排序,&#10;view_count, no summary/sentiment)&#10;→ futu-mounted search_news (below)" style="text;html=1;align=center;fontSize=10;fontColor=#23445d;" vertex="1" parent="1"><mxGeometry x="505" y="222" width="240" height="44" as="geometry" /></mxCell>
+        <mxCell id="tQ" value="get_quote&#10;get_history" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1"><mxGeometry x="72" y="162" width="132" height="46" as="geometry" /></mxCell>
+        <mxCell id="b1" value="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#555555;fontSize=8;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="190" y="164" width="13" height="13" as="geometry" /></mxCell>
+        <mxCell id="tF" value="get_company_info&#10;get_financial_report&#10;get_ownership" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1"><mxGeometry x="72" y="216" width="132" height="62" as="geometry" /></mxCell>
+        <mxCell id="b2" value="2" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#555555;fontSize=8;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="190" y="218" width="13" height="13" as="geometry" /></mxCell>
+        <mxCell id="tS" value="run_screener&#10;get_technical_indicators" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1"><mxGeometry x="216" y="162" width="132" height="46" as="geometry" /></mxCell>
+        <mxCell id="b3" value="3" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#555555;fontSize=8;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="334" y="164" width="13" height="13" as="geometry" /></mxCell>
+        <mxCell id="tC" value="get_events_calendar&#10;search_symbols" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1"><mxGeometry x="216" y="216" width="132" height="46" as="geometry" /></mxCell>
+        <mxCell id="b4" value="4" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#555555;fontSize=8;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="334" y="218" width="13" height="13" as="geometry" /></mxCell>
+        <mxCell id="tE" value="get_economic_data" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1"><mxGeometry x="360" y="162" width="150" height="34" as="geometry" /></mxCell>
+        <mxCell id="b5" value="5" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#555555;fontSize=8;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="496" y="164" width="13" height="13" as="geometry" /></mxCell>
+        <mxCell id="tCont" value="&lt;b&gt;containers&lt;/b&gt;&#10;quant_backtest (help)&#10;kimi_datasource (list…call)&#10;get_company_risk_cn&#10;tv_scan · tv_analyze · egx&#10;get_symbol_intel&#10;(options·short·analyst·div·earn)&#10;cex_market (crypto perps)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0f0f0;strokeColor=#bbbbbb;fontSize=10;" vertex="1" parent="1"><mxGeometry x="360" y="204" width="150" height="116" as="geometry" /></mxCell>
+        <mxCell id="b6" value="6" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#555555;fontSize=8;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="496" y="206" width="13" height="13" as="geometry" /></mxCell>
+        <mxCell id="b9" value="9" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#555555;fontSize=8;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="496" y="303" width="13" height="13" as="geometry" /></mxCell>
+        <mxCell id="tNote" value="get_service_status (read-only) also present; omitted from arrows for clarity" style="text;html=1;align=left;fontSize=10;fontColor=#888888;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="58" y="336" width="430" height="16" as="geometry" /></mxCell>
 
-        <mxCell id="grpCont" value="Containers &amp; kimi surface" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8f9fa;strokeColor=#999999;fontSize=12;fontStyle=1;verticalAlign=top;spacingTop=3;" vertex="1" parent="1">
-          <mxGeometry x="780" y="120" width="290" height="198" as="geometry" />
+        <!-- group: news -->
+        <mxCell id="grpNews" value="News" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8f9fa;strokeColor=#999999;fontSize=10;fontStyle=1;verticalAlign=top;spacingTop=4;align=left;spacingLeft=12;" vertex="1" parent="1">
+          <mxGeometry x="550" y="140" width="250" height="210" as="geometry" />
         </mxCell>
-        <mxCell id="tTV" value="tv_scan&#10;tv_analyze&#10;egx_market" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1"><mxGeometry x="795" y="150" width="90" height="55" as="geometry" /></mxCell>
-        <mxCell id="tK" value="kimi_datasource&#10;get_company_risk_cn" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;" vertex="1" parent="1"><mxGeometry x="895" y="150" width="160" height="55" as="geometry" /></mxCell>
-        <mxCell id="tKhint" value="kimi_datasource action='list' | describe&#10;| call → 12+ deep sources&#10;(tianyancha, World Bank, IMF, SEC …)" style="text;html=1;align=center;fontSize=10;fontColor=#5a3a6e;" vertex="1" parent="1"><mxGeometry x="795" y="220" width="260" height="44" as="geometry" /></mxCell>
+        <mxCell id="tN" value="get_news" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="580" y="162" width="190" height="34" as="geometry" /></mxCell>
+        <mxCell id="b7" value="7" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#555555;fontSize=8;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="756" y="164" width="13" height="13" as="geometry" /></mxCell>
+        <mxCell id="tNhint" value="FMP excluded: free keys paywall all&#10;news endpoints (HTTP 402) — chain skips it" style="text;html=1;align=center;fontSize=10;fontColor=#b85450;" vertex="1" parent="1"><mxGeometry x="560" y="206" width="230" height="28" as="geometry" /></mxCell>
+        <mxCell id="tNfutu" value="Chinese 快讯 / flash headlines (热度,&#10;view_count, no summary/sentiment)&#10;→ futu-mounted search_news instead" style="text;html=1;align=center;fontSize=10;fontColor=#23445d;" vertex="1" parent="1"><mxGeometry x="560" y="242" width="230" height="44" as="geometry" /></mxCell>
 
-        <mxCell id="grpFutu" value="futu-opend-mcp mount — 53 tools, enabled only when OpenD configured" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8f9fa;strokeColor=#999999;fontSize=12;fontStyle=1;verticalAlign=top;spacingTop=3;" vertex="1" parent="1">
-          <mxGeometry x="40" y="330" width="1030" height="55" as="geometry" />
+        <!-- group: futu mount -->
+        <mxCell id="grpFutu" value="futu-opend-mcp mount (53 tools)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8f9fa;strokeColor=#999999;fontSize=10;fontStyle=1;verticalAlign=top;spacingTop=4;" vertex="1" parent="1">
+          <mxGeometry x="820" y="140" width="280" height="210" as="geometry" />
         </mxCell>
-        <mxCell id="tFu" value="get_snapshot · get_kline · futu_get_option_chain · get_capital_flow · search_news · … (53 mounted tools)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="1"><mxGeometry x="70" y="346" width="970" height="26" as="geometry" /></mxCell>
+        <mxCell id="tFu" value="get_snapshot · get_kline&#10;futu_get_option_chain&#10;get_capital_flow · search_news&#10;plate/sector lists · history kline&#10;flow snapshot · fundamental static&#10;… (53 tools total)&#10;&lt;font style=&quot;font-size:9px&quot; color=&quot;#23445d&quot;&gt;HK/CN/US depth, attached to Futu OpenD&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="1"><mxGeometry x="840" y="164" width="260" height="128" as="geometry" /></mxCell>
+        <mxCell id="b8" value="8" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#555555;fontSize=8;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="1086" y="168" width="13" height="13" as="geometry" /></mxCell>
 
         <!-- router -->
-        <mxCell id="router" value="market-aware auto-router&#10;geography filter (provider covers market) → ordered fallback → first non-NotFound wins&#10;(`source` pins or reorders the chain)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1ba1e2;strokeColor=#006EAF;fontColor=#ffffff;fontSize=12;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="40" y="410" width="1030" height="55" as="geometry" />
+        <mxCell id="router" value="market-aware auto-router&#10;&lt;font style=&quot;font-size:9px&quot;&gt;source=auto: pick providers the market covers, try in chain order, first non-not_found wins · badges 1–9 = chains below&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1ba1e2;strokeColor=#006EAF;fontColor=#ffffff;fontSize=12;fontStyle=1;arcSize=50;" vertex="1" parent="1">
+          <mxGeometry x="110" y="392" width="940" height="46" as="geometry" />
         </mxCell>
 
-        <!-- row 4: providers -->
-        <mxCell id="pYahoo" value="Yahoo Finance&#10;in-process (yfinance)&#10;no key" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;" vertex="1" parent="1"><mxGeometry x="40" y="535" width="145" height="60" as="geometry" /></mxCell>
-        <mxCell id="pTV" value="TradingView&#10;in-process&#10;(screener + ta)&#10;no key" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;" vertex="1" parent="1"><mxGeometry x="195" y="535" width="145" height="60" as="geometry" /></mxCell>
-        <mxCell id="pFMP" value="FMP&#10;direct or rotator&#10;API key" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1"><mxGeometry x="350" y="535" width="145" height="60" as="geometry" /></mxCell>
-        <mxCell id="pAV" value="Alpha Vantage&#10;direct or rotator&#10;API key" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1"><mxGeometry x="505" y="535" width="145" height="60" as="geometry" /></mxCell>
-        <mxCell id="pMA" value="marketaux&#10;direct or rotator&#10;API token" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1"><mxGeometry x="660" y="535" width="145" height="60" as="geometry" /></mxCell>
-        <mxCell id="pFutu" value="Futu OpenD gateway&#10;via futu-opend-mcp&#10;(FUTU_OPEND_HOST/RSA)&#10;🔒" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="1"><mxGeometry x="815" y="535" width="150" height="70" as="geometry" /></mxCell>
-        <mxCell id="pKimi" value="kimi → cliproxy kimi-tools&#10;(credential proxy)&#10;→ Kimi datasource&#10;upstream" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;" vertex="1" parent="1"><mxGeometry x="975" y="535" width="165" height="70" as="geometry" /></mxCell>
+        <!-- Row 4: providers -->
+        <mxCell id="pYahoo" value="Yahoo Finance&#10;&lt;font style=&quot;font-size:9px&quot;&gt;in-process (yfinance)&#10;no key&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;" vertex="1" parent="1"><mxGeometry x="40" y="500" width="132" height="60" as="geometry" /></mxCell>
+        <mxCell id="pTV" value="TradingView&#10;&lt;font style=&quot;font-size:9px&quot;&gt;in-process (screener + ta)&#10;no key&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;" vertex="1" parent="1"><mxGeometry x="188" y="500" width="132" height="60" as="geometry" /></mxCell>
+        <mxCell id="pFMP" value="FMP&#10;&lt;font style=&quot;font-size:9px&quot;&gt;direct or rotator&#10;API key&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1"><mxGeometry x="336" y="500" width="132" height="60" as="geometry" /></mxCell>
+        <mxCell id="pAV" value="Alpha Vantage&#10;&lt;font style=&quot;font-size:9px&quot;&gt;direct or rotator&#10;API key&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1"><mxGeometry x="484" y="500" width="132" height="60" as="geometry" /></mxCell>
+        <mxCell id="pMA" value="marketaux&#10;&lt;font style=&quot;font-size:9px&quot;&gt;direct or rotator&#10;API token&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1"><mxGeometry x="632" y="500" width="132" height="60" as="geometry" /></mxCell>
+        <mxCell id="pCEX" value="Crypto exchanges&#10;&lt;font style=&quot;font-size:9px&quot;&gt;Bitget · Gate · MEXC&#10;USDT perp public REST&#10;no key · OKX/Binance via TV&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;" vertex="1" parent="1"><mxGeometry x="780" y="500" width="140" height="74" as="geometry" /></mxCell>
+        <mxCell id="pFutu" value="Futu OpenD&#10;&lt;font style=&quot;font-size:9px&quot;&gt;via futu-opend-mcp&#10;FUTU_OPEND_*&#10;RSA unlock&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="1"><mxGeometry x="936" y="500" width="140" height="74" as="geometry" /></mxCell>
+        <mxCell id="pKimi" value="kimi → cliproxy&#10;&lt;font style=&quot;font-size:9px&quot;&gt;kimi-tools proxy&#10;(KIMI_PROXY_URL)&#10;→ Kimi datasource&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;" vertex="1" parent="1"><mxGeometry x="1092" y="500" width="128" height="74" as="geometry" /></mxCell>
 
-        <!-- legend -->
-        <mxCell id="lgSw" value="solid edge = tool wiring" style="text;html=1;fontSize=10;fontColor=#333333;" vertex="1" parent="1"><mxGeometry x="40" y="640" width="130" height="18" as="geometry" /></mxCell>
-        <mxCell id="lgLbl" value="edge label = fallback chain (source=auto)" style="text;html=1;fontSize=10;fontColor=#333333;" vertex="1" parent="1"><mxGeometry x="175" y="640" width="250" height="18" as="geometry" /></mxCell>
-        <mxCell id="lgIn" value="rotator / credential proxy are optional per-source infrastructure" style="text;html=1;fontSize=10;fontColor=#7f6000;" vertex="1" parent="1"><mxGeometry x="430" y="640" width="330" height="18" as="geometry" /></mxCell>
+        <!-- edges: client -> server -->
+        <mxCell id="eCli" value="stdio · HTTP" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;endArrow=block;endSize=10;strokeWidth=2.5;strokeColor=#1ba1e2;fontSize=9;" edge="1" parent="1" source="client" target="serverBox"><mxGeometry relative="1" as="geometry" /></mxCell>
 
-        <!-- edges client -->
-        <mxCell id="eCli" value="stdio · streamable HTTP" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;endArrow=block;endSize=10;strokeWidth=2;strokeColor=#666666;fontSize=10;labelPosition=center;align=center;" edge="1" parent="1" source="client" target="grpMkt">
-          <mxGeometry relative="1" as="geometry"><mxPoint x="580" y="100" as="sourcePoint" /></mxGeometry>
-        </mxCell>
+        <!-- edges: tools -> router (gray wiring) -->
+        <mxCell id="cQ" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.5;exitY=1;entryX=0.15;entryY=0;endArrow=block;endSize=8;strokeColor=#666666;curved=1;" edge="1" parent="1" source="tQ" target="router"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="cF" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.5;exitY=1;entryX=0.2;entryY=0;endArrow=block;endSize=8;strokeColor=#666666;curved=1;" edge="1" parent="1" source="tF" target="router"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="cS" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.5;exitY=1;entryX=0.26;entryY=0;endArrow=block;endSize=8;strokeColor=#666666;curved=1;" edge="1" parent="1" source="tS" target="router"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="cC" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.5;exitY=1;entryX=0.3;entryY=0;endArrow=block;endSize=8;strokeColor=#666666;curved=1;" edge="1" parent="1" source="tC" target="router"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="cE" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.5;exitY=1;entryX=0.34;entryY=0;endArrow=block;endSize=8;strokeColor=#666666;curved=1;" edge="1" parent="1" source="tE" target="router"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="cCont" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.5;exitY=1;entryX=0.38;entryY=0;endArrow=block;endSize=8;strokeColor=#666666;curved=1;" edge="1" parent="1" source="tCont" target="router"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="cN" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.5;exitY=1;entryX=0.52;entryY=0;endArrow=block;endSize=8;strokeColor=#666666;curved=1;" edge="1" parent="1" source="grpNews" target="router"><mxGeometry relative="1" as="geometry" /></mxCell>
 
-        <!-- tools -> router with chain labels -->
-        <mxCell id="cQ" value="futu → yahoo → fmp → av" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.06;entryY=0;endArrow=block;endSize=8;fontSize=9;strokeColor=#666666;" edge="1" parent="1" source="tQ" target="router"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="cF" value="info yahoo→fmp→av&#10;report fmp→yahoo→av&#10;own yahoo→fmp" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.16;entryY=0;endArrow=block;endSize=8;fontSize=8;strokeColor=#666666;" edge="1" parent="1" source="tF" target="router"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="cS" value="screener tradingview→fmp&#10;technicals tradingview" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.28;entryY=0;endArrow=block;endSize=8;fontSize=9;strokeColor=#666666;" edge="1" parent="1" source="tS" target="router"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="cC" value="calendar fmp→av&#10;search fmp→av→yahoo" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.12;entryY=0;endArrow=block;endSize=8;fontSize=8;strokeColor=#666666;" edge="1" parent="1" source="tC" target="router"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="cE" value="kimi → av" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.24;entryY=0;endArrow=block;endSize=8;fontSize=9;strokeColor=#9673a6;" edge="1" parent="1" source="tE" target="router"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="cN" value="symbol av→yahoo→marketaux&#10;global marketaux" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.6;entryY=0;endArrow=block;endSize=8;fontSize=9;fontColor=#7f6000;strokeColor=#d79b00;" edge="1" parent="1" source="tN" target="router"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="cTV" value="tradingview (in-process)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.78;entryY=0;endArrow=block;endSize=8;fontSize=9;strokeColor=#666666;" edge="1" parent="1" source="tTV" target="router"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="cK" value="kimi (datasource)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.9;entryY=0;endArrow=block;endSize=8;fontSize=9;fontColor=#5a3a6e;strokeColor=#9673a6;" edge="1" parent="1" source="tK" target="router"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="cFu" value="53 tools → direct OpenD calls" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.5;exitY=1;entryX=0.95;entryY=0;endArrow=block;endSize=8;fontSize=9;fontColor=#23445d;strokeColor=#6c8ebf;" edge="1" parent="1" source="tFu" target="router"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <!-- edges router -> providers (blue = routed calls) -->
+        <mxCell id="rY" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.06;exitY=1;entryX=0.5;entryY=0;endArrow=block;endSize=9;strokeColor=#1ba1e2;strokeWidth=2;curved=1;" edge="1" parent="1" source="router" target="pYahoo"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="rTV" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.19;exitY=1;entryX=0.5;entryY=0;endArrow=block;endSize=9;strokeColor=#1ba1e2;strokeWidth=2;curved=1;" edge="1" parent="1" source="router" target="pTV"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="rFMP" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.33;exitY=1;entryX=0.5;entryY=0;endArrow=block;endSize=9;strokeColor=#1ba1e2;strokeWidth=2;curved=1;" edge="1" parent="1" source="router" target="pFMP"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="rAV" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.47;exitY=1;entryX=0.5;entryY=0;endArrow=block;endSize=9;strokeColor=#1ba1e2;strokeWidth=2;curved=1;" edge="1" parent="1" source="router" target="pAV"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="rMA" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.61;exitY=1;entryX=0.5;entryY=0;endArrow=block;endSize=9;strokeColor=#1ba1e2;strokeWidth=2;curved=1;" edge="1" parent="1" source="router" target="pMA"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="rCEX" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.75;exitY=1;entryX=0.5;entryY=0;endArrow=block;endSize=9;strokeColor=#1ba1e2;strokeWidth=2;curved=1;" edge="1" parent="1" source="router" target="pCEX"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="rFutu" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.87;exitY=1;entryX=0.5;entryY=0;endArrow=block;endSize=9;strokeColor=#1ba1e2;strokeWidth=2;curved=1;" edge="1" parent="1" source="router" target="pFutu"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="rK" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.98;exitY=1;entryX=0.5;entryY=0;endArrow=block;endSize=9;strokeColor=#1ba1e2;strokeWidth=2;curved=1;" edge="1" parent="1" source="router" target="pKimi"><mxGeometry relative="1" as="geometry" /></mxCell>
 
-        <!-- router -> providers -->
-        <mxCell id="rY" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.06;exitY=1;entryX=0.5;entryY=0;endArrow=block;endSize=9;strokeColor=#666666;strokeWidth=1.5;" edge="1" parent="1" source="router" target="pYahoo"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="rTV" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.2;exitY=1;entryX=0.5;entryY=0;endArrow=block;endSize=9;strokeColor=#666666;strokeWidth=1.5;" edge="1" parent="1" source="router" target="pTV"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="rFMP" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.34;exitY=1;entryX=0.5;entryY=0;endArrow=block;endSize=9;strokeColor=#b08800;strokeWidth=1.5;" edge="1" parent="1" source="router" target="pFMP"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="rAV" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.48;exitY=1;entryX=0.5;entryY=0;endArrow=block;endSize=9;strokeColor=#b08800;strokeWidth=1.5;" edge="1" parent="1" source="router" target="pAV"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="rMA" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.62;exitY=1;entryX=0.5;entryY=0;endArrow=block;endSize=9;strokeColor=#b08800;strokeWidth=1.5;" edge="1" parent="1" source="router" target="pMA"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="rFutu" value="unified futu legs + all 53 mounted tools" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.8;exitY=1;entryX=0.5;entryY=0;endArrow=block;endSize=9;strokeColor=#6c8ebf;strokeWidth=1.5;fontSize=9;fontColor=#23445d;" edge="1" parent="1" source="router" target="pFutu"><mxGeometry relative="1" as="geometry" /></mxCell>
-        <mxCell id="rK" value="macro / CN risk / kimi_datasource" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=0.94;exitY=1;entryX=0.5;entryY=0;endArrow=block;endSize=9;strokeColor=#9673a6;strokeWidth=1.5;fontSize=9;fontColor=#5a3a6e;" edge="1" parent="1" source="router" target="pKimi"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <!-- futu mount: 53 tools attach to OpenD directly (bypass router) -->
+        <mxCell id="cFu" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;exitX=1;exitY=0.6;entryX=0.75;entryY=0;endArrow=block;endSize=8;strokeColor=#4a7ab5;dashed=1;dashPattern=4 3;" edge="1" parent="1" source="grpFutu" target="pFutu"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <!-- routing chains legend -->
+        <mxCell id="lgTitle" value="Routing order (source=auto) — first non-not_found wins; numbers match badges on the tool boxes" style="text;html=1;fontSize=10;fontColor=#888888;fontStyle=2;align=left;" vertex="1" parent="1"><mxGeometry x="40" y="608" width="620" height="16" as="geometry" /></mxCell>
+        <mxCell id="lg1" value="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#555555;fontSize=8;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="46" y="625" width="13" height="13" as="geometry" /></mxCell>
+        <mxCell id="lg1t" value="quote / history — futu → yahoo → fmp → av" style="text;html=1;fontSize=10;fontColor=#555555;align=left;" vertex="1" parent="1"><mxGeometry x="66" y="625" width="400" height="14" as="geometry" /></mxCell>
+        <mxCell id="lg2" value="2" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#555555;fontSize=8;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="46" y="641" width="13" height="13" as="geometry" /></mxCell>
+        <mxCell id="lg2t" value="info yahoo→fmp→av · report fmp→yahoo→av · ownership yahoo→fmp" style="text;html=1;fontSize=10;fontColor=#555555;align=left;" vertex="1" parent="1"><mxGeometry x="66" y="641" width="460" height="14" as="geometry" /></mxCell>
+        <mxCell id="lg3" value="3" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#555555;fontSize=8;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="46" y="657" width="13" height="13" as="geometry" /></mxCell>
+        <mxCell id="lg3t" value="screener tradingview→fmp · technicals tradingview" style="text;html=1;fontSize=10;fontColor=#555555;align=left;" vertex="1" parent="1"><mxGeometry x="66" y="657" width="400" height="14" as="geometry" /></mxCell>
+        <mxCell id="lg4" value="4" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#555555;fontSize=8;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="46" y="673" width="13" height="13" as="geometry" /></mxCell>
+        <mxCell id="lg4t" value="calendar fmp→av · search fmp→av→yahoo" style="text;html=1;fontSize=10;fontColor=#555555;align=left;" vertex="1" parent="1"><mxGeometry x="66" y="673" width="400" height="14" as="geometry" /></mxCell>
+        <mxCell id="lg5" value="5" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#555555;fontSize=8;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="626" y="625" width="13" height="13" as="geometry" /></mxCell>
+        <mxCell id="lg5t" value="economic kimi→av" style="text;html=1;fontSize=10;fontColor=#555555;align=left;" vertex="1" parent="1"><mxGeometry x="646" y="625" width="300" height="14" as="geometry" /></mxCell>
+        <mxCell id="lg6" value="6" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#555555;fontSize=8;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="626" y="641" width="13" height="13" as="geometry" /></mxCell>
+        <mxCell id="lg6t" value="containers — quant_backtest · kimi_datasource · risk_cn · tv_scan · tv_analyze · egx&#10;get_symbol_intel (options·short·analyst·dividends·earnings)" style="text;html=1;fontSize=10;fontColor=#555555;align=left;verticalAlign=top;" vertex="1" parent="1"><mxGeometry x="646" y="639" width="540" height="26" as="geometry" /></mxCell>
+        <mxCell id="lg7" value="7" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#555555;fontSize=8;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="626" y="669" width="13" height="13" as="geometry" /></mxCell>
+        <mxCell id="lg7t" value="news — symbol av→yahoo→marketaux · global marketaux" style="text;html=1;fontSize=10;fontColor=#555555;align=left;" vertex="1" parent="1"><mxGeometry x="646" y="669" width="440" height="14" as="geometry" /></mxCell>
+        <mxCell id="lg8" value="8" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#555555;fontSize=8;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="626" y="685" width="13" height="13" as="geometry" /></mxCell>
+        <mxCell id="lg8t" value="futu mount 53 → OpenD direct (dashed) · failover via router→OpenD (blue)" style="text;html=1;fontSize=10;fontColor=#555555;align=left;" vertex="1" parent="1"><mxGeometry x="646" y="685" width="520" height="14" as="geometry" /></mxCell>
+        <mxCell id="lg9" value="9" style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#555555;fontSize=8;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="46" y="689" width="13" height="13" as="geometry" /></mxCell>
+        <mxCell id="lg9t" value="cex_market — quote/summary tradingview (screener=crypto) · kline/funding/OI bitget→gate→mexc REST (no key)" style="text;html=1;fontSize=10;fontColor=#555555;align=left;" vertex="1" parent="1"><mxGeometry x="66" y="689" width="560" height="14" as="geometry" /></mxCell>
+
+        <!-- style legend -->
+        <mxCell id="slSolid" value="" style="endArrow=block;endSize=10;html=1;strokeColor=#1ba1e2;strokeWidth=2.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="60" y="722" as="sourcePoint" /><mxPoint x="100" y="722" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="slSolidT" value="solid = tool wiring / routed calls" style="text;html=1;fontSize=10;fontColor=#555555;align=left;" vertex="1" parent="1"><mxGeometry x="110" y="716" width="230" height="14" as="geometry" /></mxCell>
+        <mxCell id="slDash" value="" style="endArrow=block;endSize=10;html=1;strokeColor=#4a7ab5;dashed=1;dashPattern=4 3;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="380" y="722" as="sourcePoint" /><mxPoint x="420" y="722" as="targetPoint" /></mxGeometry></mxCell>
+        <mxCell id="slDashT" value="dashed = direct attachment (mount → OpenD)" style="text;html=1;fontSize=10;fontColor=#555555;align=left;" vertex="1" parent="1"><mxGeometry x="430" y="716" width="280" height="14" as="geometry" /></mxCell>
+        <mxCell id="swMkt" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1"><mxGeometry x="40" y="730" width="12" height="12" as="geometry" /></mxCell>
+        <mxCell id="swMktT" value="market data" style="text;html=1;fontSize=10;fontColor=#555555;align=left;" vertex="1" parent="1"><mxGeometry x="58" y="730" width="80" height="14" as="geometry" /></mxCell>
+        <mxCell id="swNews" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1"><mxGeometry x="140" y="730" width="12" height="12" as="geometry" /></mxCell>
+        <mxCell id="swNewsT" value="news" style="text;html=1;fontSize=10;fontColor=#555555;align=left;" vertex="1" parent="1"><mxGeometry x="158" y="730" width="50" height="14" as="geometry" /></mxCell>
+        <mxCell id="swFutu" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1"><mxGeometry x="210" y="730" width="12" height="12" as="geometry" /></mxCell>
+        <mxCell id="swFutuT" value="futu mount" style="text;html=1;fontSize=10;fontColor=#555555;align=left;" vertex="1" parent="1"><mxGeometry x="228" y="730" width="70" height="14" as="geometry" /></mxCell>
+        <mxCell id="swKimi" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1"><mxGeometry x="300" y="730" width="12" height="12" as="geometry" /></mxCell>
+        <mxCell id="swKimiT" value="kimi (credential proxy)" style="text;html=1;fontSize=10;fontColor=#555555;align=left;" vertex="1" parent="1"><mxGeometry x="318" y="730" width="140" height="14" as="geometry" /></mxCell>
       </root>
     </mxGraphModel>
   </diagram>

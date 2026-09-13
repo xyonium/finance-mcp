@@ -6,27 +6,43 @@
 [![License: MIT](https://img.shields.io/github/license/xyonium/finance-mcp.svg)](https://github.com/xyonium/finance-mcp/blob/main/LICENSE)
 
 One MCP server for finance data: Yahoo Finance, TradingView, FMP, Alpha Vantage,
-marketaux, Futu OpenD and the Kimi Datasource meta-source behind a single tool
+marketaux, crypto-exchange USDT perpetuals (Bitget/Gate/MEXC over public REST,
+plus OKX/Binance via TradingView), Futu OpenD and the Kimi Datasource
+meta-source behind a single tool
 surface, with market-aware auto-routing across sources. **`auto` means the
 model stops choosing providers**: ask for a quote, a financial statement or
 an option chain and the server picks the sources that cover that market,
 tries them in chain order, and returns the first non-empty answer — the
 model calls one tool, not four.
 
+## Contents
+
+- [Features](#features)
+- [Architecture](#architecture)
+- [Install](#install)
+- [Configuration](#configuration) — [Core](#core-all-providers) · [FMP](#fmp) · [Alpha Vantage](#alpha-vantage) · [marketaux](#marketaux) · [Kimi Datasource](#kimi-datasource) · [Futu OpenD](#futu-opend-inherited-from-futu-opend-mcp)
+- [Client configuration](#client-configuration)
+- [Migrating from mcpo](#migrating-from-mcpo-5-servers--1)
+- [Tool quick reference](#tool-quick-reference)
+- [Development](#development)
+- [Release process](#release-process)
+
 ## Features
 
 | Surface | Tools | Notes |
 |---|---|---|
-| Unified tools | 19 | Domain-organized, cross-source tools with a `source` parameter — `auto` routes by market coverage, or pin one source explicitly. Per-symbol indicator queries (options / short / analyst / dividends / earnings) share one container: `get_symbol_intel(kind=…)` |
+| Unified domain tools | 13 | Cross-source tools with a `source` parameter — `auto` routes by market coverage, or pin one source explicitly. Per-symbol indicator queries (options / short / analyst / dividends / earnings) share one container: `get_symbol_intel(kind=…)` |
 | **TradingView containers** | 3 | `tv_scan`, `tv_analyze`, `egx_market` — scanner/analysis containers selected by `action` (unknown actions return the available list) |
 | **CEX container** | 1 | `cex_market` — crypto-exchange USDT-settled perpetuals on Bitget/Gate/MEXC/OKX/Binance: `quote`/`kline`/`summary`/`funding`/`open_interest`/`exchanges`/`symbols` by `action`. TradingView (screener=`crypto`) for quote/summary, exchange REST for kline/funding/OI |
-| **Futu OpenD mount** | 53 | All `futu-opend-mcp` tools mounted alongside the unified ones when OpenD is configured. `FINANCE_MCP_FUTU_MOUNT_LAYOUT=grouped` folds them into 6 market-analysis containers + 1 on-demand reference container (`action=list/describe/call`), shrinking the surface from 76 to 28 tools |
+| **Futu OpenD mount** | 53 | All `futu-opend-mcp` tools mounted alongside the unified ones when OpenD is configured. `FINANCE_MCP_FUTU_MOUNT_LAYOUT=grouped` folds them into 6 market-analysis containers + 1 on-demand reference container (`action=list/describe/call`), shrinking the surface from 73 to 27 tools |
 | **L2 self-describing containers** | 2 | `quant_backtest` and `kimi_datasource` keep secondary functionality out of the primary tool list; call with `action='help'` / `action='list'` to discover them |
 | **Diagnostics** | 1 | `get_service_status` reports provider availability, coverage and mounted tool counts (read-only, no network I/O) |
 
 **Data sources:** Yahoo Finance · TradingView · FMP · Alpha Vantage · marketaux ·
-Futu OpenD · Kimi Datasource (tianyancha CN company data, World Bank / IMF macro
-series, SEC EDGAR, S&P Capital IQ, gildata screener data, and more).
+Bitget / Gate / MEXC (USDT-settled perpetuals, public REST — OKX/Binance quotes
+via TradingView) · Futu OpenD · Kimi Datasource (tianyancha CN company data,
+World Bank / IMF macro series, SEC EDGAR, S&P Capital IQ, gildata screener
+data, and more).
 
 The unified tools accept futu (`HK.00700`), Yahoo (`0700.HK`, `COMI.CA`) and
 TradingView (`EGX:COMI`) symbol forms; bare tickers default to US.
@@ -35,12 +51,13 @@ TradingView (`EGX:COMI`) symbol forms; bare tickers default to US.
 
 <img src="docs/architecture.svg" alt="unified-finance-mcp architecture" width="1000">
 
-One server, two faces: the 19 unified tools route through a market-aware
-auto-router to the external providers (solid lines), while the 53 mounted
-`futu-opend-mcp` tools attach directly to a running Futu OpenD gateway
+One server, two faces: the 20 unified tools route through a market-aware
+auto-router to the external providers (solid lines; `cex_market` additionally
+reaches the crypto exchanges' public REST endpoints directly), while the 53
+mounted `futu-opend-mcp` tools attach directly to a running Futu OpenD gateway
 (dashed; shown in the default `flat` layout — `grouped` folds them into 6
-market-analysis containers + 1 on-demand reference container, 28 tools
-total). Badges 1–8 on the tool boxes map to the routing chains in the
+market-analysis containers + 1 on-demand reference container, 27 tools
+total). Badges 1–9 on the tool boxes map to the routing chains in the
 legend. Editable source: [docs/architecture.drawio](docs/architecture.drawio).
 
 ## Install
@@ -75,7 +92,7 @@ present, and auto-routing skips unavailable sources.
 | `FINANCE_MCP_MAX_RETRIES` | HTTP retry count | `3` |
 | `FINANCE_MCP_MIN_HOST_DELAY` | Minimum delay between requests to one host (seconds) | `0.5` |
 | `FINANCE_MCP_FUTU` | `0` disables the Futu OpenD mount entirely | `true` |
-| `FINANCE_MCP_FUTU_MOUNT_LAYOUT` | `flat` mounts all 53 futu-opend-mcp tools side-by-side; `grouped` folds them into 6 market-analysis `futu_*` containers + 1 on-demand `futu_reference` container (`action=list/describe/call`), 76 → 28 tools | `flat` |
+| `FINANCE_MCP_FUTU_MOUNT_LAYOUT` | `flat` mounts all 53 futu-opend-mcp tools side-by-side; `grouped` folds them into 6 market-analysis `futu_*` containers + 1 on-demand `futu_reference` container (`action=list/describe/call`), 73 → 27 tools | `flat` |
 | `FINANCE_MCP_CEX` | `0` disables the `cex_market` container | `true` |
 | `FINANCE_MCP_CEX_EXCHANGES` | Comma-separated whitelist for `cex_market` (failover order) | `bitget,gate,mexc` |
 | `FINANCE_MCP_CEX_PRODUCT` | Bitget product type for candle requests | `USDT-FUTURES` |
@@ -271,10 +288,11 @@ pytest -q -m "not integration"      # unit suite (integration marker needs live 
 ```
 
 Layout: `src/unified_finance_mcp/` — `providers/` (Yahoo, TradingView, FMP,
-Alpha Vantage, marketaux, Futu bridge, Kimi), `tools/` (the 16 tool modules
-registered from `ALL_MODULES`, including `intel.py` = `get_symbol_intel`
-and `futu_containers.py` = the grouped futu domain containers), `config.py`
-(env `Settings`), `http.py` (polite per-host rate-limited client).
+Alpha Vantage, marketaux, CEX, Futu bridge, Kimi), `tools/` (the 17 tool modules
+registered from `ALL_MODULES`, including `intel.py` = `get_symbol_intel`,
+`cex.py` = `cex_market` and `futu_containers.py` = the grouped futu domain
+containers), `config.py` (env `Settings`), `http.py` (polite per-host
+rate-limited client).
 
 ## Release process
 

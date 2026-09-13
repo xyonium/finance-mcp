@@ -32,7 +32,7 @@ from ._sanitize import sanitize
 
 log = logging.getLogger("unified_finance_mcp")
 
-# module names listed by tools/__init__.ALL_MODULES (self + the 13 prior) —
+# module names listed by tools/__init__.ALL_MODULES (self + the 15 prior) —
 # the full build_mcp surface, without importing each tool module here.
 UNIFIED_MODULES = [
     "quote", "history", "fundamentals", "news", "technicals", "screener",
