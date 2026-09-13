@@ -287,6 +287,53 @@ async def test_call_tianyancha_unrestricted(monkeypatch):
     assert "data_preview" in out
 
 
+# ── B1: assistant-channel nested envelope (caixin_api_search shape) ────────
+
+@respx.mock
+async def test_call_unwraps_assistant_nested_dict_payload(monkeypatch):
+    """B1: caixin_api_search returns text as stringified JSON in the ASSISTANT
+    channel with payload under `result` — must unwrap to (preview, notice)."""
+    nested_payload = json.dumps({
+        "is_success": True,
+        "result": {"data_preview": "api_name,score\ncaixin_x,0.95",
+                   "notice": "matched 3"}},
+        ensure_ascii=False)
+    respx.post(DEFAULT_KIMI_BASE_URL).respond(200, json={
+        "is_success": True, "files": [],
+        "result": {"assistant": [{"type": "text", "text": nested_payload}]}})
+    p = make_provider(monkeypatch)
+    # Pre-verify caixin (bypasses _resolve_source probe) so the call reaches
+    # _extract_call_result directly.
+    from unified_finance_mcp.providers import kimi as kimi_mod
+    kimi_mod._VERIFIED_SOURCES.add("caixin")
+    try:
+        out = await p.call("caixin", "caixin_api_search", {"query": "产业链"})
+    finally:
+        kimi_mod._VERIFIED_SOURCES.discard("caixin")
+    assert out["data_preview"].startswith("api_name,score")
+    assert out["notice"] == "matched 3"
+
+
+@respx.mock
+async def test_call_falls_back_to_outer_when_no_data_preview_in_nested(monkeypatch):
+    """B1 race: assistant nested JSON has no data_preview anywhere — keep outer text."""
+    nested = json.dumps({"is_success": True, "result": {"other_key": "v"}},
+                        ensure_ascii=False)
+    respx.post(DEFAULT_KIMI_BASE_URL).respond(200, json={
+        "is_success": True, "files": [],
+        "result": {"assistant": [{"type": "text", "text": nested}]}})
+    p = make_provider(monkeypatch)
+    from unified_finance_mcp.providers import kimi as kimi_mod
+    kimi_mod._VERIFIED_SOURCES.add("caixin")
+    try:
+        out = await p.call("caixin", "caixin_api_search", {"query": "x"})
+    finally:
+        kimi_mod._VERIFIED_SOURCES.discard("caixin")
+    # Bare nested JSON with no preview field: preserve the outer string as-is.
+    assert out["data_preview"].startswith("{")
+    assert "is_success" in out["data_preview"]
+
+
 @respx.mock
 async def test_self_refresh_write_back_is_atomic(monkeypatch, tmp_path):
     """F2: write-back goes through tmp + os.replace under flock."""

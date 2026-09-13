@@ -92,7 +92,21 @@ DISCOURAGED_SOURCES: dict[str, str] = {
     "stock_finance_data": "R1 摘 — EM/sina/cninfo 免费等质 ≈93%",
     "wind": "R8 保留-仅gap — 36 API 中 58% 免费等质",
     "sp_data": "R12 保留-仅gap — 13 API 中 8 已由 yahoo/fmp/13F 覆盖",
+    # R15 (2026-09-13 second discovery round): newly-enabled sources evaluated.
+    "ifind": "R15 摘 — 与 stock_finance_data 换皮同源；wind 股票域严格子集",
+    "pubchem": "R15 摘 — 4/4 API 1:1 PUG-REST 免费转发",
+    "chembl": "R15 摘 — 4/4 API 1:1 EBI REST 免费转发",
+    # B2 bug (fred): our call() injects `file_path` (underscored), fred
+    # upstream expects `filepath` (no underscore) and strict-rejects → both
+    # fred APIs are dead via call(). The provider decision is 摘 anyway.
+    "fred": "R15 摘 — 官方免 key + alphavantage 8 指标全覆盖 + B2 file_path/filepath 死代码",
+    "pubmed": "R15 摘 — NCBI E-utilities 免 key + 用户 paper-search 已覆盖",
 }
+
+# KEEP list (R4/R7/R10/R15-caixin): these sources are NOT downgraded.
+# caixin stays entire — its 687-API single-endpoint architecture makes
+# per-API prefix whitelisting mechanically inapplicable (see R15 verdict).
+# tianyancha / gildata / yuandian_law stay via zero free-equal evidence.
 
 # Per-source allowed API prefixes. Empty/absent entry = unrestricted.
 # For wind/sp_data (R8/R12 保留-仅gap): only the gap-classes are allowed
@@ -513,13 +527,22 @@ class KimiProvider(Provider):
     def _extract_call_result(cls, result: Any) -> tuple[str, str | None]:
         """(preview_text, notice) from a call_data_source_tool `result` block.
 
-        Two live-verified shapes (2026-09-13):
+        Three live-verified shapes (2026-09-13):
           1. official:  {"user":[{"type":"text","text": <csv-or-text>}]}
-          2. kimi-sources nest: the assistant text is a stringified JSON dict
-             {"data_preview": <csv|null>, "notice": ...} — e.g. stock_finance
-             embeds 10k+ row CSVs this way (scholar does NOT nest).
+          2. kimi-sources nest (assistant inner envelope):
+             {"assistant":[{"type":"text","text": <stringified JSON
+              {"data_preview": ..., "notice": ...}>}]} — e.g. stock_finance,
+             caixin_api_search (B1). User-channel preferred when present.
+          3. caixin_api_search bare-assistant: same as #2 but WITHOUT a
+             user channel — B1 fix unwraps the assistant text directly.
         """
         outer = _extract_user_text(result)
+        # B1 (caixin_api_search): assistant-channel nested envelope when the
+        # user channel is empty. Shape: text may be a JSON dict literal whose
+        # payload lives under `is_success`/`data`/etc.; we only need the
+        # human-readable text + any `data_preview`/`notice` pair.
+        if not outer and isinstance(result, dict):
+            outer = _extract_user_text({"assistant": result.get("assistant")})
         if not outer:
             return "", None
         stripped = outer.lstrip()
@@ -535,6 +558,14 @@ class KimiProvider(Provider):
         preview_s = preview if isinstance(preview, str) else ""
         notice = inner.get("notice")
         notice_s = notice if isinstance(notice, str) and notice else None
+        # B1 nested-bare shape: caixin_api_search hands the assistant text a
+        # JSON dict whose `result` (or `data`) is the payload. Unwrap one level.
+        if not preview_s and isinstance(inner.get("result"), dict):
+            nested = inner["result"]
+            preview_s = nested.get("data_preview") or nested.get("text") or ""
+            if not notice_s:
+                notice = nested.get("notice")
+                notice_s = notice if isinstance(notice, str) and notice else None
         # Nested preview wins; fall back to the outer text when the inner
         # envelope carries no data_preview of its own.
         return (preview_s or outer), notice_s

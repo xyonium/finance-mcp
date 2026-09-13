@@ -33,6 +33,24 @@
 
 **结果汇总**：摘×7（yahoo_finance, world_bank_open_data, arxiv, scholar, imf, sec_edgar, stock_finance_data — 其中 stock_finance_data 摘除前需先补 eastmoney provider）、留×3（tianyancha, gildata, yuandian_law）、保留-仅gap×2（wind, sp_data）。
 
+## R15 第二发现轮（2026-09-13 晚）：6 个新源
+
+| # | kimi source | 主要用途 | 裁决 | 证据 |
+|---|-------------|---------|-----|-----|
+| 13 | ifind | CN A 股行情/财务 | **摘** | [R15-ifind](kimi-sources/ifind.verdict.md) — 与 stock_finance_data 逐字同构、wind 股票域严格子集、wind gap 白名单零交集 |
+| 14 | pubchem | 化学库 | **摘** | [R15-pubchem](kimi-sources/pubchem.verdict.md) — 4/4 API 1:1 PUG-REST 免费转发，全 200 实测 |
+| 15 | chembl | 生物活性库 | **摘** | [R15-chembl](kimi-sources/chembl.verdict.md) — 4/4 API 1:1 EBI REST 免费转发，样例 IC50 40.0 nM 即 kimi 文档自家引值 |
+| 16 | caixin | CN 财经 687 API 22 大类 | **留** | [R15-caixin](kimi-sources/caixin.verdict.md) — 8 类 ~200 API（保险/人物/环保/舆情/专利/私募/债券发行人/产业图谱）免费+wind+gildata 双重不可替；687 全走单一 caixin_api_call → per-API 前缀白名单机械不可行，软路由建议见裁决 §处置 |
+| 17 | fred | 美宏观 （圣路易斯联储） | **摘** | [R15-fred](kimi-sources/fred.verdict.md) — 官方 FRED 免 key (5min 注册） + alphavantage 8 指标 8/8 重叠 + B2 `file_path`/`filepath` 参数冲突全死代码 |
+| 18 | pubmed | 生物医学文献 | **摘** | [R15-pubmed](kimi-sources/pubmed.verdict.md) — NCBI E-utilities 免 key + 用户 paper-search `_pubmed_search` 直连已覆盖 |
+
+**B 系列 bug 发现**（非硬性本期，列入后续）：
+- **B1** `caixin_api_search` 响应 assistant+`is_success` 嵌套 → `_extract_call_result` 只认 user 通道返回空 envelope → **已修**（providers/kimi.py）
+- **B2** fred `file_path` vs `filepath` 参数冲突 → fred 两个 API 全死（不影响，fred 已摘）
+- **B3** wind `wind_get_bond_financial_data` 上游要 `question` 参数（不是 `code`）→ 该 API 现无法正确调，后续调用方适配
+
+**18 源终局**：留×4（tianyancha, gildata, yuandian_law, caixin）、窄化×2（wind 18-API、sp_data 5-API）、摘×12（yahoo_finance, world_bank, arxiv, scholar, imf, sec_edgar, stock_finance_data, ifind, pubchem, chembl, fred, pubmed）。
+
 ## R13 实施设计（由本评估直接推出）
 
 1. **KNOWN_SOURCES 缩到 5**：`tianyancha, gildata, yuandian_law, wind, sp_data`。
