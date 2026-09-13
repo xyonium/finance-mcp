@@ -6,7 +6,7 @@ from .base import Provider
 
 
 def build_providers(settings: Settings) -> dict[str, Provider]:
-    from . import alphavantage, fmp, futu_bridge, kimi, marketaux, tradingview, yahoo
+    from . import alphavantage, cex, fmp, futu_bridge, kimi, marketaux, tradingview, yahoo
 
     instances = [
         yahoo.YahooProvider(settings),
@@ -17,4 +17,6 @@ def build_providers(settings: Settings) -> dict[str, Provider]:
         futu_bridge.FutuProvider(settings),
         kimi.KimiProvider(settings),
     ]
+    if settings.cex_enabled:
+        instances.append(cex.CexProvider(settings))
     return {p.name: p for p in instances}

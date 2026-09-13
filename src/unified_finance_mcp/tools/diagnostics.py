@@ -36,8 +36,8 @@ log = logging.getLogger("unified_finance_mcp")
 # the full build_mcp surface, without importing each tool module here.
 UNIFIED_MODULES = [
     "quote", "history", "fundamentals", "news", "technicals", "screener",
-    "ownership", "calendar", "macro", "search", "containers", "backtest",
-    "kimi", "diagnostics",
+    "ownership", "calendar", "macro", "search", "intel", "containers",
+    "backtest", "kimi", "diagnostics", "cex",
 ]
 # canonical map of each unified module -> the tools it registers (verified
 # against each module's register(); a drift here fails tests/test_diagnostics).
@@ -52,10 +52,12 @@ MODULE_TOOLS = {
     "calendar": {"get_events_calendar"},
     "macro": {"get_economic_data"},
     "search": {"search_symbols"},
+    "intel": {"get_symbol_intel"},
     "containers": {"tv_scan", "tv_analyze", "egx_market"},
     "backtest": {"quant_backtest"},
     "kimi": {"kimi_datasource", "get_company_risk_cn"},
     "diagnostics": {"get_service_status"},
+    "cex": {"cex_market"},
 }
 
 _KEY_BASES = {

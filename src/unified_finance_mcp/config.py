@@ -59,6 +59,16 @@ class Settings:
     kimi_auth_file: str = field(default_factory=lambda: _env("KIMI_AUTH_FILE"))
     kimi_base_url: str = field(default_factory=lambda: _env("KIMI_BASE_URL", DEFAULT_KIMI_BASE_URL))
     kimi_files_dir: str = field(default_factory=lambda: _env("KIMI_FILES_DIR", "/tmp/unified_finance_mcp"))
+    cex_enabled: bool = field(default_factory=lambda: _env_bool("FINANCE_MCP_CEX", True))
+    cex_exchanges: tuple[str, ...] = field(
+        default_factory=lambda: tuple(
+            e.strip().lower()
+            for e in _env("FINANCE_MCP_CEX_EXCHANGES", "bitget,gate,mexc").split(",")
+            if e.strip()))
+    cex_product: str = field(
+        default_factory=lambda: _env("FINANCE_MCP_CEX_PRODUCT", "USDT-FUTURES"))
+    cex_tv_screener: str = field(
+        default_factory=lambda: _env("FINANCE_MCP_CEX_TV_SCREENER", "crypto"))
 
 
 def get_settings() -> Settings:

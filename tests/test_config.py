@@ -39,3 +39,22 @@ def test_kimi_env_override(monkeypatch):
     assert s.kimi_access_token == "tok"
     assert s.kimi_auth_file.endswith("kimi-*.json")
     assert s.kimi_files_dir == "/tmp/kimi-out"
+
+
+def test_cex_defaults(monkeypatch):
+    for k in ("FINANCE_MCP_CEX", "FINANCE_MCP_CEX_EXCHANGES",
+              "FINANCE_MCP_CEX_PRODUCT", "FINANCE_MCP_CEX_TV_SCREENER"):
+        monkeypatch.delenv(k, raising=False)
+    s = get_settings()
+    assert s.cex_enabled is True
+    assert s.cex_exchanges == ("bitget", "gate", "mexc")
+    assert s.cex_product == "USDT-FUTURES"
+    assert s.cex_tv_screener == "crypto"
+
+
+def test_cex_exchanges_parsing_and_disable(monkeypatch):
+    monkeypatch.setenv("FINANCE_MCP_CEX_EXCHANGES", "Bitget, BINANCE ,mexc")
+    monkeypatch.setenv("FINANCE_MCP_CEX", "0")
+    s = get_settings()
+    assert s.cex_exchanges == ("bitget", "binance", "mexc")  # lowercased, order kept
+    assert s.cex_enabled is False

@@ -19,6 +19,7 @@ model calls one tool, not four.
 |---|---|---|
 | Unified tools | 19 | Domain-organized, cross-source tools with a `source` parameter — `auto` routes by market coverage, or pin one source explicitly. Per-symbol indicator queries (options / short / analyst / dividends / earnings) share one container: `get_symbol_intel(kind=…)` |
 | **TradingView containers** | 3 | `tv_scan`, `tv_analyze`, `egx_market` — scanner/analysis containers selected by `action` (unknown actions return the available list) |
+| **CEX container** | 1 | `cex_market` — crypto-exchange USDT-settled perpetuals on Bitget/Gate/MEXC/OKX/Binance: `quote`/`kline`/`summary`/`funding`/`open_interest`/`exchanges`/`symbols` by `action`. TradingView (screener=`crypto`) for quote/summary, exchange REST for kline/funding/OI |
 | **Futu OpenD mount** | 53 | All `futu-opend-mcp` tools mounted alongside the unified ones when OpenD is configured. `FINANCE_MCP_FUTU_MOUNT_LAYOUT=grouped` folds them into 6 market-analysis containers + 1 on-demand reference container (`action=list/describe/call`), shrinking the surface from 76 to 28 tools |
 | **L2 self-describing containers** | 2 | `quant_backtest` and `kimi_datasource` keep secondary functionality out of the primary tool list; call with `action='help'` / `action='list'` to discover them |
 | **Diagnostics** | 1 | `get_service_status` reports provider availability, coverage and mounted tool counts (read-only, no network I/O) |
@@ -75,6 +76,10 @@ present, and auto-routing skips unavailable sources.
 | `FINANCE_MCP_MIN_HOST_DELAY` | Minimum delay between requests to one host (seconds) | `0.5` |
 | `FINANCE_MCP_FUTU` | `0` disables the Futu OpenD mount entirely | `true` |
 | `FINANCE_MCP_FUTU_MOUNT_LAYOUT` | `flat` mounts all 53 futu-opend-mcp tools side-by-side; `grouped` folds them into 6 market-analysis `futu_*` containers + 1 on-demand `futu_reference` container (`action=list/describe/call`), 76 → 28 tools | `flat` |
+| `FINANCE_MCP_CEX` | `0` disables the `cex_market` container | `true` |
+| `FINANCE_MCP_CEX_EXCHANGES` | Comma-separated whitelist for `cex_market` (failover order) | `bitget,gate,mexc` |
+| `FINANCE_MCP_CEX_PRODUCT` | Bitget product type for candle requests | `USDT-FUTURES` |
+| `FINANCE_MCP_CEX_TV_SCREENER` | TradingView screener slug for the CEX quote/summary path | `crypto` |
 
 ### FMP
 
@@ -244,6 +249,7 @@ also removes the Python ≥3.14 wrapper constraint mcpo hit).
 | `tv_scan` | TradingView exchange-wide scans (top gainers/losers, volume breakout, …) by `action` |
 | `tv_analyze` | TradingView symbol analysis (summary, candle patterns, multi-timeframe, …) by `action` |
 | `egx_market` | Egyptian Exchange tools (overview, sector scan, index, screener, trade plan, fibonacci) by `action` |
+| `cex_market` | Crypto-exchange USDT-settled perpetuals by `action` (`quote`/`kline`/`summary`/`funding`/`open_interest`/`exchanges`/`symbols`). Default whitelist `bitget,gate,mexc`; `okx`/`binance` are TradingView-only (quote/summary) and opted in via `FINANCE_MCP_CEX_EXCHANGES`. CL here is a USDT PERPETUAL (funding rate, 24/7), NOT CL=F / NYMEX:CL1! |
 | `get_service_status` | Provider availability/coverage and mounted tool counts (read-only) |
 
 Plus the 53 mounted `futu-opend-mcp` tools (`get_snapshot`, `get_kline`,

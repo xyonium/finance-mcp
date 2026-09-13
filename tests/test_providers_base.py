@@ -5,7 +5,14 @@ from unified_finance_mcp.providers import build_providers
 def test_registry_keys():
     ps = build_providers(get_settings())
     assert set(ps) == {"yahoo", "tradingview", "fmp", "alphavantage", "marketaux",
-                       "futu", "kimi"}
+                       "futu", "kimi", "cex"}
+
+
+def test_cex_absent_when_disabled(monkeypatch):
+    """FINANCE_MCP_CEX=0 must keep cex out of the registry (Task 5 container
+    gate reads the same flag; this pins build_providers)."""
+    monkeypatch.setenv("FINANCE_MCP_CEX", "0")
+    assert "cex" not in build_providers(get_settings())
 
 
 def test_keyless_available_and_coverage():

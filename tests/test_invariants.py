@@ -61,7 +61,7 @@ def test_expected_tool_count_exact():
     mcp = build_mcp(get_settings())
     unified = [t.name for t in mcp._tool_manager.list_tools()
                if not t.fn.__module__.startswith("futu_opend_mcp")]
-    assert len(unified) == 19
+    assert len(unified) == 20
 
 
 def test_futu_tools_mounted():

@@ -95,7 +95,7 @@ async def test_status_shape(monkeypatch):
         assert isinstance(status["available"], bool), name
         assert isinstance(status["covers"], list), name
     assert out["futu_opend"]["reachable"] is True
-    assert out["tools"]["unified"] == 18  # exact pin: 18 expected unified tools
+    assert out["tools"]["unified"] == 20  # exact pin: intel/cex 挂表后与 invariants 一致
     assert out["tools"]["futu_mounted"] >= 53
     assert out["tools"]["total"] == out["tools"]["unified"] + out["tools"]["futu_mounted"]
 
@@ -104,7 +104,15 @@ async def test_all_providers_reported(monkeypatch):
     _mock_kimi(monkeypatch, None)
     out = await _register()()
     assert set(out["providers"]) == {"yahoo", "tradingview", "fmp", "alphavantage",
-                                     "marketaux", "futu", "kimi"}
+                                     "marketaux", "futu", "kimi", "cex"}
+
+
+async def test_cex_provider_reported(monkeypatch):
+    """cex is keyless: available() is settings-gated, covers is CRYPTO only."""
+    _mock_kimi(monkeypatch, None)
+    out = await _register()()
+    entry = out["providers"]["cex"]
+    assert entry["available"] is True and entry["covers"] == ["CRYPTO"]
 
 
 async def test_fmp_cached_probe_reported_no_fresh_probe(monkeypatch):
@@ -308,8 +316,8 @@ def test_module_registered_and_mounts_tool():
     from mcp.server.fastmcp import FastMCP
 
     assert "diagnostics" in tools_pkg.ALL_MODULES
-    assert len(tools_pkg.ALL_MODULES) == 16
-    assert len(set(tools_pkg.ALL_MODULES)) == 16  # no duplicates
+    assert len(tools_pkg.ALL_MODULES) == 17
+    assert len(set(tools_pkg.ALL_MODULES)) == 17  # no duplicates
 
     mcp = FastMCP("t16-test")
     diagnostics.register(mcp, None, get_settings())
