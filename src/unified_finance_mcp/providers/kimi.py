@@ -101,6 +101,16 @@ DISCOURAGED_SOURCES: dict[str, str] = {
     # fred APIs are dead via call(). The provider decision is 摘 anyway.
     "fred": "R15 摘 — 官方免 key + alphavantage 8 指标全覆盖 + B2 file_path/filepath 死代码",
     "pubmed": "R15 摘 — NCBI E-utilities 免 key + 用户 paper-search 已覆盖",
+    # R17 (2026-09-13 exhaustive probe rounds 3-4): additional mirror-mode wraps.
+    "uniprot": "R17 摘 — rest.uniprot.org 官方免 key 1:1 转发",
+    "pdb": "R17 摘 — data.rcsb.org Data API + search.rcsb.org 官方免 key 1:1 转发",
+    # ecb/oecd/eurostat verdicts pending; will append descriptions when R17
+    # subagent results return. Reserve the keys now to keep the registry
+    # consistent; values filled in after subagent evidence lands.
+    "ecb": "R17 摘 — data-api.ecb.europa.eu 官方 SDW SDMX 免 key 1:1 转发（EXR 21 obs + 214 flow 目录实测）",
+    "oecd": "R17 摘 — sdmx.oecd.org 官方 SDMX 3.0 免 key 1:1 转发（1,546 flow + US GDP 22.6T 实测）",
+    "eurostat": "R17 摘 — ec.europa.eu/eurostat 官方 dissemination API 免 key（8156 dataflow 实测；见 docs/research/kimi-sources/eurostat.verdict.md）",
+    "dongcai": "R17 摘 — 东方财富/Choice：数据面即 EM 免费面（akshare 等质），7/13 是报告生成非数据",
 }
 
 # KEEP list (R4/R7/R10/R15-caixin): these sources are NOT downgraded.

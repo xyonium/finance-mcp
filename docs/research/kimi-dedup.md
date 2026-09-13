@@ -51,6 +51,25 @@
 
 **18 源终局**：留×4（tianyancha, gildata, yuandian_law, caixin）、窄化×2（wind 18-API、sp_data 5-API）、摘×12（yahoo_finance, world_bank, arxiv, scholar, imf, sec_edgar, stock_finance_data, ifind, pubchem, chembl, fred, pubmed）。
 
+## R17 穷尽探测（2026-09-13 晚后续）：5 轮 ~849 候选，11 个新源
+
+通过 R14 探测机制继续 brute-force 名字，最终共发现 kimi 真实全量 **23 源**（12 种子 + 11 新增）。
+
+| # | kimi source | 域 | 裁决 | 证据 |
+|---|-------------|---|-----|-----|
+| 19 | uniprot | 蛋白质序列 | **摘** | [R17-uniprot](kimi-sources/uniprot.verdict.md) — rest.uniprot.org 官方免 key 1:1 转发 |
+| 20 | pdb | 蛋白质结构 | **摘** | [R17-pdb](kimi-sources/pdb.verdict.md) — data.rcsb.org 官方免 key 1:1 转发 |
+| 21 | ecb | 欧央行 | **摘** | [R17-ecb](kimi-sources/ecb.verdict.md) — SDW SDMX 免 key 1:1 转发（214 flow 目录） |
+| 22 | oecd | OECD 经济 | **摘** | [R17-oecd](kimi-sources/oecd.verdict.md) — SDMX 3.0 免 key 1:1 转发（1,546 flow） |
+| 23 | eurostat | 欧统计局 | **摘** | [R17-eurostat](kimi-sources/eurostat.verdict.md) — dissemination API 免 key（8,156 dataflow） |
+| 24 | dongcai | CN 财经 （东财 Choice) | **摘** | [R17-dongcai](kimi-sources/dongcai.verdict.md) — EM 免费面 + 报告生成 7/13 非数据 API |
+
+**23 源终局**：留×4（tianyancha, gildata, yuandian_law, caixin）、窄化×2（wind, sp_data）、摘×17（其余）。
+
+**模式观察**（R1-R17 全证据链）：kimi 的免费官方 REST 包装策略系统性存在于学术/宏观/化学/生物域——每个开放 API 它都叫价。这种模式识别对未来新源预判有用：只要 describe doc 自陈 via official API + free,no key → 几乎必摘。
+
+**探测衰减点验证**：R17 第 6 轮 82/82 候选全 miss，意味着我们已遍历 kimi 当前全量。
+
 ## R13 实施设计（由本评估直接推出）
 
 1. **KNOWN_SOURCES 缩到 5**：`tianyancha, gildata, yuandian_law, wind, sp_data`。
