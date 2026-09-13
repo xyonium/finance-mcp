@@ -49,23 +49,11 @@ _KIMI_HINT = ("设 KIMI_PROXY_URL 指 cliproxy kimi-tools 管理端点"
               "或 KIMI_ACCESS_TOKEN 直注，"
               "或 KIMI_AUTH_FILE 指 cliproxy 的 auths/kimi-*.json")
 
-# World Bank / IMF indicator mapping (v1: the api_name candidates are probed
-# against the live describe() doc — a miss falls back to alphavantage).
-KIMI_MACRO_CANDIDATES = [
-    ("world_bank_open_data", "get_world_bank_series", "series"),
-    ("world_bank_open_data", "get_indicator_data", "indicator"),
-    ("imf", "get_imf_series", "series"),
-]
-KIMI_MACRO_VALUES = {
-    "GDP": "NY.GDP.MKTP.CD",
-    "CPI": "FP.CPI.TOTL",
-    "INFLATION": "FP.CPI.TOTL.ZG",
-    "UNEMPLOYMENT": "SL.UEM.TOTL.ZS",
-    "FEDERAL_FUNDS_RATE": "FEDFUNDS",
-    "TREASURY_YIELD_10Y": "DGS10",
-    "RETAIL_SALES": "RSXFS",
-    "NONFARM_PAYROLL": "PAYEMS",
-}
+# R13: KIMI_MACRO_CANDIDATES / KIMI_MACRO_VALUES were REMOVED. R3 (world_bank)
+# and R9 (imf) verdicts proved both routes were dead code (`economic()` gated
+# on `api in describe_doc` and the probed api names did not exist in the live
+# doc, and the legacy CompactData endpoint kimi pre-bound those codes to is
+# itself DNS-dead). Macro series now route alphavantage-direct in tools/macro.py.
 
 
 def _is_api_missing(e: Exception) -> bool:

@@ -309,35 +309,33 @@ async def test_company_risk_cn_search_failure_falls_back_to_input(monkeypatch):
         {"keyword": "腾讯"}
 
 
-# ── macro/ownership wiring (controller ruling 6) ────────────────────────────
+# ── macro/ownership wiring (controller ruling 6 / R13 macro alphavantage direct) ─
 
-async def test_economic_data_chain_kimi_first(monkeypatch):
+async def test_economic_data_alphavantage_direct(monkeypatch):
+    """R13: macro chain collapsed to alphavantage-only; kimi.economic removed."""
     providers = build_providers(get_settings())
-    kimi = providers["kimi"]
+    assert not hasattr(providers["kimi"], "economic") or not callable(
+        getattr(providers["kimi"], "economic", None)) is True  # face removed
     rows = [{"date": "2025-01-01", "value": 1.0}]
-    kimi.economic = AsyncMock(return_value=rows)
-    providers["alphavantage"].economic = AsyncMock(
-        side_effect=AssertionError("alphavantage must not be called (kimi first)"))
-    _set_available(providers, ("kimi", "alphavantage"))
-    results = {}
-    macro_mod.register(_capture(results), providers, get_settings())
-    out = await results["get_economic_data"]("GDP")
-    assert out == {"data": rows}
-    providers["alphavantage"].economic.assert_not_called()
-    assert kimi.economic.await_args.args[0] == "GDP"
-
-
-async def test_economic_data_kimi_describe_miss_falls_back_to_av(monkeypatch):
-    providers = build_providers(get_settings())
-    kimi = providers["kimi"]
-    kimi.economic = AsyncMock(side_effect=NotFound("kimi: indicator not in tianyancha doc"))
-    rows = [{"date": "2025-01-01", "value": 2.0}]
     providers["alphavantage"].economic = AsyncMock(return_value=rows)
-    _set_available(providers, ("kimi", "alphavantage"))
+    _set_available(providers, ("alphavantage",))
     results = {}
     macro_mod.register(_capture(results), providers, get_settings())
     out = await results["get_economic_data"]("GDP")
     assert out == {"data": rows}
+    providers["alphavantage"].economic.assert_awaited_once_with("GDP")
+
+
+async def test_economic_data_alphavantage_error_propagates(monkeypatch):
+    """No more kimi fallback — alphavantage failure surfaces as routing error."""
+    providers = build_providers(get_settings())
+    providers["alphavantage"].economic = AsyncMock(
+        side_effect=NotFound("alphavantage: series miss"))
+    _set_available(providers, ("alphavantage",))
+    results = {}
+    macro_mod.register(_capture(results), providers, get_settings())
+    out = await results["get_economic_data"]("GDP")
+    assert "error" in out
 
 
 async def test_ownership_cn_name_major_routes_to_kimi(monkeypatch):

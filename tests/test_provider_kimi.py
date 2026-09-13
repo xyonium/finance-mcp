@@ -39,8 +39,14 @@ def _clear_desc_cache():
     from unified_finance_mcp.providers import kimi
 
     kimi._DESC_CACHE.clear()
+    kimi._VERIFIED_SOURCES.clear()
+    kimi._VERIFIED_SOURCES.update(kimi.KNOWN_SOURCES)
+    kimi._BLOCKED_SOURCES.clear()
     yield
     kimi._DESC_CACHE.clear()
+    kimi._VERIFIED_SOURCES.clear()
+    kimi._VERIFIED_SOURCES.update(kimi.KNOWN_SOURCES)
+    kimi._BLOCKED_SOURCES.clear()
 
 
 def _ok(user_text="preview csv here", files=None):
@@ -107,10 +113,55 @@ async def test_describe_skeleton_doc_raises_and_is_not_cached(monkeypatch):
     assert route.call_count == 2  # no garbage caching
 
 
-async def test_describe_unknown_source_notfound_no_http(monkeypatch):
+@respx.mock
+async def test_describe_unknown_source_blocked_after_skeleton_probe(monkeypatch):
+    """R14: unknown source probes upstream; skeleton doc -> NotFound + blocked.
+
+    Second call must NOT re-hit the network (blocked short-TTL)."""
+    route = respx.post(DEFAULT_KIMI_BASE_URL)
+    route.respond(200, json="# \n\n**Description:** \n\n## Available APIs")
     p = make_provider(monkeypatch)
     with pytest.raises(NotFound):
         await p.describe("no_such_source")
+    assert route.call_count == 1  # probe spent one call
+    # Blocked on second attempt (no new request).
+    with pytest.raises(NotFound):
+        await p.describe("no_such_source")
+    assert route.call_count == 1
+
+
+@respx.mock
+async def test_describe_unknown_source_succeeds_and_joins_pool(monkeypatch):
+    """R14: a successful probe adds the source to the verified pool."""
+    from unified_finance_mcp.providers import kimi as kimi_mod
+
+    respx.post(DEFAULT_KIMI_BASE_URL).respond(
+        200, json="# ifind\n\n## Available APIs\n\n### ifind_get_quote")
+    p = make_provider(monkeypatch)
+    assert "ifind" not in kimi_mod._VERIFIED_SOURCES
+    doc = await p.describe("ifind")
+    assert "ifind_get_quote" in doc
+    assert "ifind" in kimi_mod._VERIFIED_SOURCES
+
+
+@respx.mock
+async def test_describe_upstream_failure_does_not_block(monkeypatch):
+    """R14 ruling "排除额度不足": rate_limited/auth/upstream errors must NOT block.
+    A second call after a 429 retries the probe (no permanent masking)."""
+    from unified_finance_mcp.providers import kimi as kimi_mod
+
+    route = respx.post(DEFAULT_KIMI_BASE_URL)
+    route.respond(429, json={"error": "rate_limited"})
+    p = make_provider(monkeypatch)
+    with pytest.raises((UpstreamError, Exception)):  # PoliteClient will retry/raise
+        await p.describe("no_such_source")
+    assert "no_such_source" not in kimi_mod._BLOCKED_SOURCES
+    # Now flip the route to a real doc: the next describe must succeed.
+    route.reset()
+    route.respond(200, json="# real\n\n## Available APIs\n\n### x_y")
+    doc = await p.describe("no_such_source")
+    assert "x_y" in doc
+    assert "no_such_source" in kimi_mod._VERIFIED_SOURCES
 
 
 @respx.mock
@@ -180,6 +231,60 @@ async def test_call_data_source_tool_wire_key_set_exact(monkeypatch):
     await p.call("tianyancha", "search_company", {"keyword": "腾讯"})
     body = json.loads(respx.calls[0].request.content)
     assert set(body["params"]) == {"data_source_name", "api_name", "params"}
+
+
+# ── R14 SOURCE_ALLOWED_API_PREFIXES whitelist ────────────────────────────
+
+async def test_call_wind_rejects_non_gap_api_no_http(monkeypatch):
+    """R8 仅gap: wind realtime quote (免费替代充足) must be blocked before upstream."""
+    p = make_provider(monkeypatch)
+    with pytest.raises(NotFound) as exc:
+        await p.call("wind", "wind_get_stock_quote", {"code": "601126.SH"})
+    assert "allowed api prefixes" in str(exc.value)
+
+
+@respx.mock
+async def test_call_wind_accepts_bond_valuation(monkeypatch):
+    """wind bond data (免费零等质) passes through and hits upstream."""
+    respx.post(DEFAULT_KIMI_BASE_URL).respond(200, json=_ok(
+        "bond,valuation\n019547,100.23"))
+    p = make_provider(monkeypatch)
+    out = await p.call("wind", "wind_get_bond_financial_data", {"code": "019547.SH"})
+    assert "bond" in out["data_preview"]
+
+
+@respx.mock
+async def test_call_wind_accepts_edb_series(monkeypatch):
+    """wind EDB long-tail macro lookup passes through."""
+    respx.post(DEFAULT_KIMI_BASE_URL).respond(200, json=_ok("series,data"))
+    p = make_provider(monkeypatch)
+    await p.call("wind", "wind_query_economic_indicator_data", {"code": "M0012301"})
+
+
+async def test_call_spdata_rejects_fundamentals_no_http(monkeypatch):
+    """R12 仅gap: sp_data fundamentals (yahoo/fmp/13F 已覆盖) must be blocked."""
+    p = make_provider(monkeypatch)
+    with pytest.raises(NotFound):
+        await p.call("sp_data", "sp_get_financials", {"ticker": "AAPL"})
+
+
+@respx.mock
+async def test_call_spdata_accepts_transcript(monkeypatch):
+    """sp_data transcript (免费无等质) passes through."""
+    respx.post(DEFAULT_KIMI_BASE_URL).respond(200, json=_ok("Q3 transcript..."))
+    p = make_provider(monkeypatch)
+    out = await p.call("sp_data", "sp_get_transcripts", {"ticker": "AAPL"})
+    assert "transcript" in out["data_preview"]
+
+
+@respx.mock
+async def test_call_tianyancha_unrestricted(monkeypatch):
+    """Sources without a whitelist entry pass all APIs through (现已验证 tianyancha 为白名单-free)."""
+    respx.post(DEFAULT_KIMI_BASE_URL).respond(200, json=_ok("ok"))
+    p = make_provider(monkeypatch)
+    # Non-whitelisted api on unrestricted source goes through.
+    out = await p.call("tianyancha", "any_api_name", {})
+    assert "data_preview" in out
 
 
 @respx.mock
@@ -616,4 +721,4 @@ def test_provider_module_import_does_not_touch_network(monkeypatch):
     assert kimi.KIMI_OAUTH_TOKEN_URL.startswith("https://")
     assert "tianyancha" in kimi.KNOWN_SOURCES
     assert "world_bank_open_data" in kimi.KNOWN_SOURCES
-    assert KimiProvider(get_settings()).list_sources() == kimi.KNOWN_SOURCES
+    assert set(KimiProvider(get_settings()).list_sources()) == set(kimi.KNOWN_SOURCES)

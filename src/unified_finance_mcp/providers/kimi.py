@@ -4,7 +4,8 @@ Protocol reference (re-implemented, NOT copied): AGPL plugin
 piexian/astrbot_plugin_kimi_datasource_api + official Kimi Code plugin docs.
 
 Token/base resolution order (controller ruling 2, 2026-09-10 proxy decision;
-management-key extension for the cliproxy kimi-tools plugin, 2026-09-11):
+management-key extension for the cliproxy kimi-tools plugin, 2026-09-11;
+allow-list allow-growth R14, 2026-09-13):
   1. settings.kimi_proxy_url non-empty -> base_url = proxy URL. The proxy
      holds/refreshes the upstream bearer. If settings.kimi_access_token is
      ALSO set here, its value is used as the CLIProxyAPI *management* key
@@ -19,6 +20,20 @@ management-key extension for the cliproxy kimi-tools plugin, 2026-09-11):
      self-refresh fallback via auth.kimi.com).
   All three empty -> available() False; _headers() raises AuthError listing
   the three configuration ways.
+
+Source discoverability (R14 — 用户口径 2026-09-13):
+  `KNOWN_SOURCES` is a SEED list, not a whitelist. `describe()` and `call()`
+  accept any source name the upstream actually knows about, via a probe-on-
+  first-sight pattern:
+    - hit in `_VERIFIED_SOURCES` -> proceed
+    - hit in `_BLOCKED_SOURCES` (recent enough) -> NotFound (fail fast, no quota)
+    - otherwise -> probe upstream get_data_source_desc once
+        * doc contains "###"   -> add to _VERIFIED_SOURCES, proceed
+        * doc is a skeleton    -> add to _BLOCKED_SOURCES (24h TTL), NotFound
+        * upstream error        -> propagate (NOT block) so transient failures
+                                  don't permanently mask a source; auth /
+                  rate_limited errors in particular must NOT block,
+                  per the user's R14 ruling ("排除额度不足").
 """
 from __future__ import annotations
 
@@ -37,26 +52,97 @@ from typing import Any
 import anyio
 
 from ..config import DEFAULT_KIMI_BASE_URL, Settings
-from ..errors import AuthError, NotFound, UpstreamError, scrub
+from ..errors import AuthError, NotFound, ProviderError, UpstreamError, scrub
 from ..http import PoliteClient
 from .base import Provider
 
 __all__ = [
     "DEFAULT_KIMI_BASE_URL",
     "KNOWN_SOURCES",
+    "DISCOURAGED_SOURCES",
+    "SOURCE_ALLOWED_API_PREFIXES",
     "KimiProvider",
     "resolve_kimi_auth_file",
 ]
 
 # DEFAULT_KIMI_BASE_URL is re-exported via the import above (brief import path).
 KIMI_DATASOURCE_VERSION = "3.4.0"
+
+# Seed list — the 12 sources live-verified on 2026-09-13. NOT a whitelist:
+# any source the upstream accepts is auto-added to `_VERIFIED_SOURCES` on
+# first successful describe (see KimiProvider._resolve_source).
 KNOWN_SOURCES = [
     "stock_finance_data", "yahoo_finance", "world_bank_open_data", "tianyancha",
     "arxiv", "scholar", "yuandian_law", "wind", "imf", "gildata",
     "sec_edgar", "sp_data",
 ]
+
+# Sources the R1-R12 evaluation judged "摘" or "保留-仅gap" (2026-09-13).
+# Keeping them here (not removing) lets the pass-through serve them when a
+# user enables new upstream plugins; the DISCOURAGED tag downgrades them to
+# "documented but not recommended" without blocking.
+# Mapping to evidence: docs/research/kimi-sources/<source>.verdict.md
+DISCOURAGED_SOURCES: dict[str, str] = {
+    "yahoo_finance": "R2 摘 — repo providers/yahoo.py 已覆盖",
+    "world_bank_open_data": "R3 摘 — 官方 api.worldbank.org 免 key；kimi 路由死代码",
+    "arxiv": "R5 摘 — arXiv 官方 API + user ~/paper-search",
+    "scholar": "R6 摘 — OpenAlex + google_scholar链",
+    "imf": "R9 摘 — IMF DataMapper + api.imf.org SDMX 2.1 免 key",
+    "sec_edgar": "R11 摘 — SEC EDGAR 官方 REST 全免 key",
+    "stock_finance_data": "R1 摘 — EM/sina/cninfo 免费等质 ≈93%",
+    "wind": "R8 保留-仅gap — 36 API 中 58% 免费等质",
+    "sp_data": "R12 保留-仅gap — 13 API 中 8 已由 yahoo/fmp/13F 覆盖",
+}
+
+# Per-source allowed API prefixes. Empty/absent entry = unrestricted.
+# For wind/sp_data (R8/R12 保留-仅gap): only the gap-classes are allowed
+# through; everything else is rejected BEFORE the upstream call (zero
+# quota cost for the rejected traffic). Exact prefixes below were derived
+# from the live describe docs on 2026-09-13 — see the verdict files for the
+# API-by-API mapping.
+SOURCE_ALLOWED_API_PREFIXES: dict[str, tuple[str, ...]] = {
+    # wind (R8 保留-仅gap): keep the 17% that free sources genuinely lack.
+    # Live-verified 2026-09-13 against the upstream's own "Available APIs"
+    # listing. Free-side 100% equivalents (price/quote basics, fund NAV,
+    # announcements, plain financial_data) route to akshare instead.
+    "wind": (
+        "wind_get_risk_metrics",            # 波动率/Beta/相关性矩阵等——免费弱
+        "wind_get_bond_basicinfo",
+        "wind_get_bond_issuer_info",
+        "wind_get_bond_market_data",
+        "wind_get_bond_financial_data",     # 债券个券估值/久期/凸性所在
+        "wind_get_stock_technicals",        # MACD/RSI 等更完整
+        "wind_get_index_technicals",
+        "wind_get_stock_price_indicators",  # PE/PB/PS 全史——免费弱
+        "wind_get_fund_price_indicators",
+        "wind_get_index_price_indicators",
+        "wind_get_fund_holders",            # 份额持有人结构——免费弱
+        "wind_get_fund_company_info",
+        "wind_get_fund_financials",
+        "wind_get_fund_performance",
+        "wind_get_index_basicinfo",
+        "wind_get_index_fundamentals",
+        "wind_search_economic_indicator",   # EDB 长尾宏观
+        "wind_query_economic_indicator_data",
+    ),
+    # sp_data (R12 保留-仅gap): keep transcripts / estimates / competitors /
+    # transactions&advisors / relationships — the 5 classes free sources lack.
+    "sp_data": (
+        "sp_get_estimates",                 # 一致预期历史
+        "sp_get_transcripts",               # 业绩电话会议全文
+        "sp_get_competitors",               # 竞对列表
+        "sp_get_transactions_advisors",     # 交易/并购顾问关系
+        "sp_get_transactions_relationships", # 交易关系图谱
+    ),
+}
+
 _DESC_CACHE: dict[str, tuple[float, str]] = {}
 _DESC_TTL = 24 * 3600
+
+# R14 runtime source registry (see module docstring).
+_VERIFIED_SOURCES: set[str] = set(KNOWN_SOURCES)
+_BLOCKED_SOURCES: dict[str, float] = {}  # source -> block epoch
+_BLOCKED_TTL = 24 * 3600
 
 KIMI_OAUTH_TOKEN_URL = "https://auth.kimi.com/api/oauth/token"
 KIMI_CLIENT_ID = "17e5f671-d194-4dfb-9706-5516cb48c098"  # Kimi Code CLI public client
@@ -228,7 +314,9 @@ class KimiProvider(Provider):
         return "GLOBAL" in self.markets or market in self.markets
 
     def list_sources(self) -> list[str]:
-        return KNOWN_SOURCES
+        """All sources the client has prove-ably reached, alphabetised.
+        Seeds from KNOWN_SOURCES; grows at runtime as probes succeed."""
+        return sorted(_VERIFIED_SOURCES)
 
     def _client(self) -> PoliteClient:
         if self._http is None:
@@ -302,21 +390,73 @@ class KimiProvider(Provider):
                 _extract_user_text(body.get("error")) or str(body)[:200], bearer))
         return body if isinstance(body, dict) else {"raw": body}
 
+    # ── R14 source-resolution gate ─────────────────────────────────────────
+
+    async def _resolve_source(self, source: str) -> None:
+        """Probe-on-first-sight gate (replaces the R13 KNOWN_SOURCES whitelist).
+
+        Fast paths:
+          * source in _VERIFIED_SOURCES -> return immediately.
+          * source in _BLOCKED_SOURCES and the block is fresh (<_BLOCKED_TTL)
+            -> NotFound, fail fast without spending quota.
+
+        Slow path: probe upstream get_data_source_desc once.
+          * doc contains "###"  -> add to _VERIFIED_SOURCES.
+          * doc is a skeleton     -> block for _BLOCKED_TTL, NotFound.
+          * upstream raised       -> propagate; do NOT block. Auth /
+            rate_limited / network failures must not permanently mask a
+            source (user R14 ruling "排除额度不足" — quota-only rejections
+            count as transient, not as a reason to block).
+        """
+        if source in _VERIFIED_SOURCES:
+            return
+        blocked_at = _BLOCKED_SOURCES.get(source)
+        if blocked_at is not None and time.time() - blocked_at < _BLOCKED_TTL:
+            raise NotFound(
+                f"kimi: unknown datasource {source!r} "
+                f"(probe returned skeleton doc {int(time.time()-blocked_at)}s ago)")
+        text = await self._probe_describe(source)  # may raise (auth/net/upstream)
+        if "###" in text:
+            _VERIFIED_SOURCES.add(source)
+            _BLOCKED_SOURCES.pop(source, None)
+            return
+        _BLOCKED_SOURCES[source] = time.time()
+        raise NotFound(
+            f"kimi: unknown datasource {source!r}; probe doc has no API headings")
+
+    async def _probe_describe(self, source: str) -> str:
+        """Uncached describe probe (may raise UpstreamError on failure).
+
+        Always at most one live call per miss; the verify caller caches the
+        successful doc immediately. Skeleton docs return truthy (no leading
+        `###`) so the caller can distinguish real docs from empty shells.
+        """
+        body = await self._invoke("get_data_source_desc", {"name": source})
+        text = self._desc_text(body)
+        if not text:
+            raise UpstreamError(
+                f"kimi describe({source}): no usable doc in upstream response")
+        return text
+
     async def describe(self, source: str) -> str:
-        if source not in KNOWN_SOURCES:
-            raise NotFound(f"kimi: unknown datasource {source!r}; "
-                           f"known: {', '.join(KNOWN_SOURCES)}")
+        """describe with R14 pass-through.
+
+        Verified+described sources hit the 24h _DESC_CACHE; new sources are
+        probe-verified first (adds them to _VERIFIED_SOURCES on success).
+        """
         cached = _DESC_CACHE.get(source)
         if cached and time.time() - cached[0] < _DESC_TTL:
             return cached[1]
-        body = await self._invoke("get_data_source_desc", {"name": source})
-        text = self._desc_text(body)
-        if not text or "###" not in text:
-            # Guard 2: some sources describe to a near-empty skeleton
-            # ("# \n\n**Description:** \n\n## Available APIs") — truthy, so
-            # without the API-name check it got cached 24h as garbage.
+        await self._resolve_source(source)
+        # _resolve_source just called upstream; now fetch again so the cache
+        # write is local to one method. Two live describe hits on first sight
+        # is acceptable — succeeded sources cache for 24h regardless.
+        text = await self._probe_describe(source)
+        if "###" not in text:
+            # Race: probe succeeded but a second describe regressed — treat
+            # as transient and refuse to cache skeleton output.
             raise UpstreamError(
-                f"kimi describe({source}): no usable doc in upstream response")
+                f"kimi describe({source}): doc regressed to skeleton after probe")
         _DESC_CACHE[source] = (time.time(), text)
         return text
 
@@ -337,6 +477,15 @@ class KimiProvider(Provider):
         return ""
 
     async def call(self, source: str, api: str, params: dict) -> dict:
+        # R14 gate 1: probe-verify source before any quota spend.
+        await self._resolve_source(source)
+        # R14 gate 2: per-source API prefix whitelist (drop-in, no upstream
+        # call for rejected traffic).
+        allowed = SOURCE_ALLOWED_API_PREFIXES.get(source)
+        if allowed is not None and not api.startswith(allowed):
+            raise NotFound(
+                f"kimi: {source}/{api} not in allowed api prefixes "
+                f"({len(allowed)} prefix(es); see SOURCE_ALLOWED_API_PREFIXES)")
         merged = dict(params or {})
         if not merged.get("file_path"):
             merged["file_path"] = (f"{self.settings.kimi_files_dir}/"
@@ -416,48 +565,13 @@ class KimiProvider(Provider):
             out.append(str(files_dir / name))
         return out
 
-    # ── unified-tool provider faces ─────────────────────────────────────────
+    # ── unified-tool provider faces (R14) ──────────────────────────────────
 
-    async def economic(self, indicator: str) -> list[dict]:
-        """Macro series via kimi datasource (world_bank_open_data / imf).
-
-        Ruling 6: only calls the datasource when describe succeeds AND a
-        matching api shows up in the doc; otherwise NotFound lets the router
-        fall back to alphavantage (macro.py chain = ["kimi", "alphavantage"]).
-        """
-        from ..tools import kimi as kimi_tools
-
-        key = indicator.strip().upper()
-        for source, api, param in kimi_tools.KIMI_MACRO_CANDIDATES:
-            value = kimi_tools.KIMI_MACRO_VALUES.get(key)
-            if value is None:
-                continue
-            doc = await self.describe(source)
-            if api not in doc:
-                continue
-            out = await self.call(source, api, {param: value})
-            rows = self._parse_macro_preview(out.get("data_preview") or "")
-            if rows:
-                return rows
-        raise NotFound(f"kimi: {indicator} not found in matched datasource docs")
-
-    @staticmethod
-    def _parse_macro_preview(preview: str) -> list[dict]:
-        """Loose parse of the datasource CSV text preview into rows."""
-        import csv
-        import io as _io
-
-        if not preview:
-            return []
-        try:
-            reader = csv.DictReader(_io.StringIO(preview))
-            rows = [{k or "value": (v or "").strip() for k, v in row.items()}
-                    for row in reader if any((v or "").strip() for v in row.values())]
-            if rows:
-                return rows
-        except (csv.Error, UnicodeDecodeError):
-            pass
-        return []
+    # NOTE: the `economic()` face is intentionally REMOVED in R13. R3/R9
+    # verdicts showed both kimi macro routes (world_bank_open_data +
+    # imf) were dead code paths whose api names never matched the live
+    # describe doc, so alphavantage is now the sole macro provider.
+    # See tools/macro.py for the new chain.
 
     async def shareholders(self, company: str) -> dict:
         """CN company-name major-holders fallback (tianyancha shareholders)."""
