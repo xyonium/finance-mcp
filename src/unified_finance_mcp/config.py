@@ -34,6 +34,18 @@ DEFAULT_FMP_BASE_URL = "https://financialmodelingprep.com"
 DEFAULT_AV_BASE_URL = "https://www.alphavantage.co"
 DEFAULT_MARKETAUX_BASE_URL = "https://api.marketaux.com"
 DEFAULT_KIMI_BASE_URL = "https://api.kimi.com/coding/v1/tools"
+# Native macro provider sub-endpoint bases (R18). WB/IMF are keyless; FRED is
+# free-registration-keyed. EDGAR/ECB/OECD/EUROSTAT are declared for the
+# tombstoned follow-up providers (see providers/macro.py docstring) so their
+# env override surface already exists.
+DEFAULT_WB_BASE_URL = "https://api.worldbank.org/v2"
+DEFAULT_IMF_BASE_URL = "https://www.imf.org/external/datamapper/api/v1"
+DEFAULT_FRED_BASE_URL = "https://api.stlouisfed.org/fred"
+DEFAULT_EDGAR_BASE_URL = "https://data.sec.gov/api/xbrl"
+DEFAULT_ECB_BASE_URL = "https://data-api.ecb.europa.eu/service"
+DEFAULT_OECD_BASE_URL = "https://sdmx.oecd.org/public/rest"
+DEFAULT_EUROSTAT_BASE_URL = (
+    "https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0")
 
 
 @dataclass(frozen=True)
@@ -69,6 +81,22 @@ class Settings:
         default_factory=lambda: _env("FINANCE_MCP_CEX_PRODUCT", "USDT-FUTURES"))
     cex_tv_screener: str = field(
         default_factory=lambda: _env("FINANCE_MCP_CEX_TV_SCREENER", "crypto"))
+    # ── native macro provider (R18): WB/IMF keyless, FRED free-registration ──
+    fred_api_key: str = field(default_factory=lambda: _env("FRED_API_KEY"))
+    world_bank_base_url: str = field(
+        default_factory=lambda: _env("WORLD_BANK_BASE_URL", DEFAULT_WB_BASE_URL))
+    imf_base_url: str = field(
+        default_factory=lambda: _env("IMF_BASE_URL", DEFAULT_IMF_BASE_URL))
+    fred_base_url: str = field(
+        default_factory=lambda: _env("FRED_BASE_URL", DEFAULT_FRED_BASE_URL))
+    sec_edgar_base_url: str = field(
+        default_factory=lambda: _env("SEC_EDGAR_BASE_URL", DEFAULT_EDGAR_BASE_URL))
+    ecb_base_url: str = field(
+        default_factory=lambda: _env("ECB_BASE_URL", DEFAULT_ECB_BASE_URL))
+    oecd_base_url: str = field(
+        default_factory=lambda: _env("OECD_BASE_URL", DEFAULT_OECD_BASE_URL))
+    eurostat_base_url: str = field(
+        default_factory=lambda: _env("EUROSTAT_BASE_URL", DEFAULT_EUROSTAT_BASE_URL))
 
 
 def get_settings() -> Settings:

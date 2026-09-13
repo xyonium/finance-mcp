@@ -5,7 +5,7 @@ from unified_finance_mcp.providers import build_providers
 def test_registry_keys():
     ps = build_providers(get_settings())
     assert set(ps) == {"yahoo", "tradingview", "fmp", "alphavantage", "marketaux",
-                       "futu", "kimi", "cex"}
+                       "futu", "kimi", "macro", "cex"}
 
 
 def test_cex_absent_when_disabled(monkeypatch):
@@ -22,6 +22,15 @@ def test_keyless_available_and_coverage():
     assert not ps["futu"].covers("EG")        # futu: no Egypt
     assert ps["futu"].covers("HK")
     assert not ps["alphavantage"].covers("EG")
+
+
+def test_macro_keyless_always_available():
+    """R18: macro is keyless-first (world_bank/imf), so available() is True
+    even with no FRED_API_KEY — fred is merely skipped without a key."""
+    ps = build_providers(get_settings())
+    assert ps["macro"].available()
+    assert ps["macro"].markets is None       # macro series: global, never gated
+    assert ps["macro"].covers("US") and ps["macro"].covers("EG")
 
 
 def test_fmp_unavailable_without_key(monkeypatch):

@@ -104,7 +104,7 @@ async def test_all_providers_reported(monkeypatch):
     _mock_kimi(monkeypatch, None)
     out = await _register()()
     assert set(out["providers"]) == {"yahoo", "tradingview", "fmp", "alphavantage",
-                                     "marketaux", "futu", "kimi", "cex"}
+                                     "marketaux", "futu", "kimi", "macro", "cex"}
 
 
 async def test_cex_provider_reported(monkeypatch):

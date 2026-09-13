@@ -183,17 +183,23 @@ async def test_events_calendar_bad_dates_never_raises(monkeypatch):
 async def test_economic_data_returns_rows(monkeypatch):
     providers = build_providers(get_settings())
     rows = [{"date": "2026-01-01", "value": 23000.0}]
-    providers["alphavantage"].economic = AsyncMock(return_value=rows)
-    _set_available(providers, ("alphavantage",))
+    # R18: macro is first in CHAIN and always available (keyless WB floor),
+    # so the reachable candidate set for this input is macro, not alphavantage.
+    providers["macro"].economic = AsyncMock(return_value=rows)
+    providers["alphavantage"].economic = AsyncMock(
+        side_effect=AssertionError("alphavantage must not be called (macro first)"))
+    _set_available(providers, ("macro", "alphavantage"))
     results = {}
     macro_mod.register(_capture(results), providers, get_settings())
     out = await results["get_economic_data"]("gdp")  # case-insensitive
     assert out == {"data": rows}
-    assert providers["alphavantage"].economic.await_args.args[0] == "GDP"
+    assert providers["macro"].economic.await_args.args[0] == "GDP"
 
 
 async def test_economic_data_unknown_indicator_hint(monkeypatch):
     providers = build_providers(get_settings())
+    providers["macro"].economic = AsyncMock(
+        side_effect=AssertionError("must not be called"))
     providers["alphavantage"].economic = AsyncMock(
         side_effect=AssertionError("must not be called"))
     results = {}
@@ -207,8 +213,9 @@ async def test_economic_data_unknown_indicator_hint(monkeypatch):
 
 async def test_economic_data_av_fails_returns_error(monkeypatch):
     providers = build_providers(get_settings())
+    providers["macro"].economic = AsyncMock(side_effect=NotFound("macro: none"))
     providers["alphavantage"].economic = AsyncMock(side_effect=NotFound("av: none"))
-    _set_available(providers, ("alphavantage",))
+    _set_available(providers, ("macro", "alphavantage"))
     results = {}
     macro_mod.register(_capture(results), providers, get_settings())
     out = await results["get_economic_data"]("GDP")
