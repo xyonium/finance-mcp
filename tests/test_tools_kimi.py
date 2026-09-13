@@ -131,36 +131,55 @@ async def test_datasource_auth_error_kind_preserved(monkeypatch):
 
 async def test_company_risk_cn_resolves_full_name_first(monkeypatch):
     p = make_kimi(monkeypatch)
-    responses = {}
+    responses = []
 
     def fake_call(source, api, params, **_kw):
-        responses[api] = params
-        if api == "search_company":
-            return {"data_preview": "深圳市腾讯计算机系统有限公司",
+        responses.append((api, params))
+        if api == "tianyancha_company_search":
+            return {"data_preview": "regStatus,name\n存续,深圳市腾讯计算机系统有限公司",
                     "saved_files": []}
-        return {"data_preview": f"{api} rows", "saved_files": []}
+        return {"data_preview": f"{params['api_call_name']} rows",
+                "saved_files": []}
 
     p.call = AsyncMock(side_effect=fake_call)
     out = await kimi_mod.get_company_risk_cn("腾讯", _provider=p)
     assert "error" not in out
-    assert responses["search_company"]["keyword"] == "腾讯"  # search uses short name
+    search_call = responses[0]
+    assert search_call == ("tianyancha_company_search", {"search_keyword": "腾讯"})
     assert out["company"] == "深圳市腾讯计算机系统有限公司"
+    aspect_calls = dict((params["api_call_name"], params)
+                        for api, params in responses[1:])
     for aspect in ALL_ASPECTS:
-        api = kimi_mod.ASPECT_APIS[aspect][0]
-        assert out["aspects"][aspect] == {"data_preview": f"{api} rows",
-                                          "saved_files": []}
-        assert responses[api]["name"] == "深圳市腾讯计算机系统有限公司"
+        api_name = kimi_mod.ASPECT_APIS[aspect][0]
+        assert out["aspects"][aspect]["data_preview"] == f"{api_name} rows"
+        assert aspect_calls[api_name]["api_call_params"] == \
+            {"keyword": "深圳市腾讯计算机系统有限公司"}
     assert out["aspect_errors"] == {}
+
+
+async def test_company_risk_cn_full_name_from_saved_csv(monkeypatch, tmp_path):
+    p = make_kimi(monkeypatch)
+    csv_file = tmp_path / "tyc.csv"
+    csv_file.write_text("name,id\n深圳市腾讯计算机系统有限公司,1", encoding="utf-8")
+
+    def fake_call(source, api, params, **_kw):
+        if api == "tianyancha_company_search":
+            # payload landed on disk, not inline (search CSV > preview size)
+            return {"data_preview": "", "saved_files": [str(csv_file)]}
+        return {"data_preview": "rows", "saved_files": []}
+
+    p.call = AsyncMock(side_effect=fake_call)
+    out = await kimi_mod.get_company_risk_cn("腾讯", aspects=["profile"], _provider=p)
+    assert out["company"] == "深圳市腾讯计算机系统有限公司"
+    assert "profile" in out["aspects"]
 
 
 async def test_company_risk_cn_aspects_subset(monkeypatch):
     p = make_kimi(monkeypatch)
-    responses = {}
 
     def fake_call(source, api, params, **_kw):
-        responses[api] = params
-        if api == "search_company":
-            return {"data_preview": "阿里巴巴（中国）有限公司", "saved_files": []}
+        if api == "tianyancha_company_search":
+            return {"data_preview": "name\n阿里巴巴（中国）有限公司", "saved_files": []}
         return {"data_preview": "rows", "saved_files": []}
 
     p.call = AsyncMock(side_effect=fake_call)
@@ -172,13 +191,11 @@ async def test_company_risk_cn_aspects_subset(monkeypatch):
 
 async def test_company_risk_cn_partial_failures_recorded(monkeypatch):
     p = make_kimi(monkeypatch)
-    responses = {}
 
     def fake_call(source, api, params, **_kw):
-        responses[api] = params
-        if api == "search_company":
-            return {"data_preview": "腾讯科技（深圳）有限公司", "saved_files": []}
-        if api == "shareholders":
+        if api == "tianyancha_company_search":
+            return {"data_preview": "name\n腾讯科技（深圳）有限公司", "saved_files": []}
+        if api == "tianyancha_api_call" and params["api_call_name"] == "工商信息-企业股东":
             raise UpstreamError("kimi: shareholders down")
         return {"data_preview": "rows", "saved_files": []}
 
@@ -191,28 +208,59 @@ async def test_company_risk_cn_partial_failures_recorded(monkeypatch):
     assert "shareholders" not in out["aspects"]
 
 
-async def test_company_risk_cn_api_name_probing_and_describe_fallback(monkeypatch):
+async def test_company_risk_cn_api_search_fallback_and_error_payload(monkeypatch):
+    """Prefix candidates miss -> api_search discovers the drifted name."""
     p = make_kimi(monkeypatch)
     called = []
 
     async def fake_call(source, api, params, **_kw):
         called.append(api)
-        if api == "search_company":
-            return {"data_preview": "腾讯科技（深圳）有限公司", "saved_files": []}
+        if api == "tianyancha_company_search":
+            return {"data_preview": "name\n腾讯科技（深圳）有限公司", "saved_files": []}
+        if api == "tianyancha_api_search":
+            assert params["query"] in kimi_mod.ASPECT_APIS["shareholders"]
+            return {"data_preview": "0  工商信息-企业股东    keyword\n"
+                                    "1  工商信息-历史股东信息  keyword",
+                    "saved_files": []}
         raise NotFound("kimi: API_NOT_FOUND")
 
     p.call = AsyncMock(side_effect=fake_call)
-    p.describe = AsyncMock(return_value="doc with api_names shareholders and get_shareholders")
     out = await kimi_mod.get_company_risk_cn("腾讯科技", aspects=["shareholders"],
                                              _provider=p)
     assert "error" not in out
-    # every candidate probed in order; all missing -> describe fallback doc
-    assert called == ["search_company", "shareholders", "get_shareholders"]
-    assert "shareholders" in out["aspect_errors"]
-    assert "shareholders" not in out["aspects"]
-    assert p.describe.await_count == 1
-    assert "doc with api_names shareholders and get_shareholders" in \
-        out["aspect_errors"]["shareholders"]  # self-description for the LLM
+    assert called == ["tianyancha_company_search",
+                      "tianyancha_api_call", "tianyancha_api_call",  # both prefixes miss
+                      "tianyancha_api_search",
+                      "tianyancha_api_call", "tianyancha_api_call",  # both discovered names miss
+                      "tianyancha_api_search",
+                      "tianyancha_api_call", "tianyancha_api_call"]  # phrasing 2: same names, miss
+    assert "shareholders" in out["aspect_errors"]  # api_call never succeeded
+    # self-description: the failing error embeds the live api_search output
+    assert "工商信息-企业股东" in out["aspect_errors"]["shareholders"]
+
+
+async def test_company_risk_cn_api_search_self_heals(monkeypatch):
+    """The api_search-discovered name is actually used for the data call."""
+    p = make_kimi(monkeypatch)
+    aspect_calls = []
+
+    async def fake_call(source, api, params, **_kw):
+        if api == "tianyancha_company_search":
+            return {"data_preview": "name\n腾讯科技（深圳）有限公司", "saved_files": []}
+        if api == "tianyancha_api_search":
+            return {"data_preview": "0  工商信息-股东信息总览  keyword", "saved_files": []}
+        if api == "tianyancha_api_call":
+            aspect_calls.append(params["api_call_name"])
+            if params["api_call_name"] == "工商信息-股东信息总览":
+                return {"data_preview": "rows", "saved_files": []}
+        raise NotFound("kimi: API_NOT_FOUND")
+
+    p.call = AsyncMock(side_effect=fake_call)
+    out = await kimi_mod.get_company_risk_cn("腾讯科技", aspects=["shareholders"],
+                                             _provider=p)
+    assert "error" not in out
+    assert out["aspects"]["shareholders"] == {"data_preview": "rows", "saved_files": []}
+    assert aspect_calls == ["工商信息-企业股东", "股东信息", "工商信息-股东信息总览"]
 
 
 async def test_company_risk_cn_unknown_aspect_hint(monkeypatch):
@@ -239,25 +287,26 @@ async def test_company_risk_cn_never_raises(monkeypatch):
     assert "error" in out
 
 
-async def test_company_risk_cn_search_all_miss_falls_back_to_input(monkeypatch):
-    """F5: search candidates all missing -> use the user input as the name."""
+async def test_company_risk_cn_search_failure_falls_back_to_input(monkeypatch):
+    """F5: company_search errors -> use the user input as the name."""
     p = make_kimi(monkeypatch)
     aspect_params = {}
 
     async def fake_call(source, api, params, **_kw):
-        if api in ("search_company", "search"):
+        if api == "tianyancha_company_search":
             raise NotFound("kimi: API_NOT_FOUND")
-        aspect_params[api] = params
+        if api == "tianyancha_api_call":
+            aspect_params[api] = params
         return {"data_preview": "rows", "saved_files": []}
 
     p.call = AsyncMock(side_effect=fake_call)
-    p.describe = AsyncMock(return_value="doc")
     out = await kimi_mod.get_company_risk_cn("腾讯", aspects=["shareholders"],
                                              _provider=p)
     assert "error" not in out
     assert out["company"] == "腾讯"  # original input, not an error dict
     assert "shareholders" in out["aspects"]
-    assert aspect_params["shareholders"]["name"] == "腾讯"
+    assert aspect_params["tianyancha_api_call"]["api_call_params"] == \
+        {"keyword": "腾讯"}
 
 
 # ── macro/ownership wiring (controller ruling 6) ────────────────────────────

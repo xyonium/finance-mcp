@@ -18,7 +18,7 @@ import pytest
 import respx
 
 from unified_finance_mcp.config import DEFAULT_KIMI_BASE_URL, get_settings
-from unified_finance_mcp.errors import AuthError, UpstreamError
+from unified_finance_mcp.errors import AuthError, NotFound, UpstreamError
 from unified_finance_mcp.providers.kimi import KimiProvider
 
 PROXY_URL = "http://kimi-proxy:8788/coding/v1/tools"
@@ -55,7 +55,7 @@ def _ok(user_text="preview csv here", files=None):
 
 @respx.mock
 async def test_describe_sends_method_and_headers(monkeypatch):
-    respx.post(DEFAULT_KIMI_BASE_URL).respond(200, json=_ok("# tianyancha API doc"))
+    respx.post(DEFAULT_KIMI_BASE_URL).respond(200, json=_ok("# tianyancha API doc\n## Available APIs\n### tianyancha_api_call"))
     p = make_provider(monkeypatch)
     doc = await p.describe("tianyancha")
     assert "tianyancha" in doc
@@ -69,11 +69,88 @@ async def test_describe_sends_method_and_headers(monkeypatch):
 
 @respx.mock
 async def test_describe_cached_within_ttl(monkeypatch):
-    respx.post(DEFAULT_KIMI_BASE_URL).respond(200, json=_ok("# arxiv doc"))
+    respx.post(DEFAULT_KIMI_BASE_URL).respond(200, json=_ok("# arxiv doc\n## Available APIs\n### search"))
     p = make_provider(monkeypatch)
-    assert await p.describe("arxiv") == "# arxiv doc"
-    assert await p.describe("arxiv") == "# arxiv doc"
+    assert await p.describe("arxiv") == "# arxiv doc\n## Available APIs\n### search"
+    assert await p.describe("arxiv") == "# arxiv doc\n## Available APIs\n### search"
     assert respx.calls.call_count == 1
+
+
+@respx.mock
+async def test_describe_accepts_bare_string_body(monkeypatch):
+    """cliproxy kimi-tools proxy returns the doc as a top-level JSON string
+    (live-verified 2026-09-13), not the official result.user envelope."""
+    respx.post(DEFAULT_KIMI_BASE_URL).respond(
+        200, json="# tianyancha\n\n## Available APIs\n\n### tianyancha_api_call")
+    p = make_provider(monkeypatch)
+    doc = await p.describe("tianyancha")
+    assert "tianyancha_api_call" in doc
+
+
+@respx.mock
+async def test_describe_empty_bare_string_raises(monkeypatch):
+    respx.post(DEFAULT_KIMI_BASE_URL).respond(200, json="")
+    p = make_provider(monkeypatch)
+    with pytest.raises(UpstreamError):
+        await p.describe("wind")
+
+
+@respx.mock
+async def test_describe_skeleton_doc_raises_and_is_not_cached(monkeypatch):
+    """一个 truthy 的骨架文档（无 ### API 节）必须报错且不能被 24h 缓存。"""
+    route = respx.post(DEFAULT_KIMI_BASE_URL)
+    route.respond(200, json="# wind\n\n**Description:** \n\n## Available APIs")
+    p = make_provider(monkeypatch)
+    for _ in range(2):
+        with pytest.raises(UpstreamError):
+            await p.describe("wind")
+    assert route.call_count == 2  # no garbage caching
+
+
+async def test_describe_unknown_source_notfound_no_http(monkeypatch):
+    p = make_provider(monkeypatch)
+    with pytest.raises(NotFound):
+        await p.describe("no_such_source")
+
+
+@respx.mock
+async def test_call_unwraps_nested_data_preview(monkeypatch, tmp_path):
+    """嵌套 JSON 的 result.assistant text（如 stock_finance_data）要解出
+    data_preview 与 notice。"""
+    nested = json.dumps({"data_preview": "a,b\n1,2", "notice": "3 pages"},
+                        ensure_ascii=False)
+    respx.post(DEFAULT_KIMI_BASE_URL).respond(200, json={
+        "is_success": True,
+        "files": [],
+        "result": {"assistant": [{"type": "text", "text": nested}]}})
+    p = make_provider(monkeypatch)
+    out = await p.call("stock_finance_data", "sina_realtime",
+                       {"code": "sh601126"})
+    assert out["data_preview"] == "a,b\n1,2"
+    assert out["notice"] == "3 pages"
+
+
+@respx.mock
+async def test_call_tianyancha_banner_prepends_saved_file(monkeypatch, tmp_path):
+    """'天眼查查询成功' 横幅说明表格数据在 CSV 文件里；preview 前置保存路径。"""
+    import base64
+
+    def _b64(s: str) -> str:
+        return base64.b64encode(s.encode()).decode()
+
+    monkeypatch.setenv("KIMI_FILES_DIR", str(tmp_path))
+    respx.post(DEFAULT_KIMI_BASE_URL).respond(200, json={
+        "is_success": True,
+        "files": [{"content": _b64("name,id\n深圳市腾讯计算机系统有限公司,1"),
+                   "encoding": "base64", "name": "tyc.csv"}],
+        "result": {"assistant": [{"type": "text",
+                                  "text": "# 天眼查查询成功\nAPI: 搜索-搜索"}]}})
+    p = make_provider(monkeypatch)
+    out = await p.call("tianyancha", "tianyancha_company_search",
+                       {"search_keyword": "腾讯"})
+    assert len(out["saved_files"]) == 1
+    assert out["data_preview"].startswith(f"saved_files: {out['saved_files'][0]}\n") or \
+        "天眼查查询成功" in out["data_preview"]
 
 
 @respx.mock
@@ -98,7 +175,7 @@ async def test_call_returns_preview_and_saves_files(monkeypatch, tmp_path):
 @respx.mock
 async def test_call_data_source_tool_wire_key_set_exact(monkeypatch):
     """F1 probe: the call params carry exactly the protocol keys."""
-    respx.post(DEFAULT_KIMI_BASE_URL).respond(200, json=_ok("ok"))
+    respx.post(DEFAULT_KIMI_BASE_URL).respond(200, json=_ok("# wind doc\n## Available APIs\n### query"))
     p = make_provider(monkeypatch)
     await p.call("tianyancha", "search_company", {"keyword": "腾讯"})
     body = json.loads(respx.calls[0].request.content)
@@ -124,7 +201,7 @@ async def test_self_refresh_write_back_is_atomic(monkeypatch, tmp_path):
     monkeypatch.setattr("unified_finance_mcp.providers.kimi.os.replace", spy)
     respx.post("https://auth.kimi.com/api/oauth/token").respond(200, json={
         "access_token": "new-at", "refresh_token": "new-rt", "expires_in": 900})
-    respx.post(DEFAULT_KIMI_BASE_URL).respond(200, json=_ok("ok"))
+    respx.post(DEFAULT_KIMI_BASE_URL).respond(200, json=_ok("# wind doc\n## Available APIs\n### query"))
     p = KimiProvider(get_settings())
     await p.describe("wind")
     assert replaced["dst"] == str(f)
@@ -199,10 +276,10 @@ async def test_401_rereads_auth_file_and_retries_once(monkeypatch, tmp_path):
     route = respx.post(DEFAULT_KIMI_BASE_URL)
     route.side_effect = [
         httpx.Response(401, json={"error": "unauthorized"}),
-        httpx.Response(200, json=_ok("recovered")),
+        httpx.Response(200, json=_ok("# wind doc\n## Available APIs\n### query")),
     ]
     p = KimiProvider(get_settings())
-    assert await p.describe("wind") == "recovered"
+    assert await p.describe("wind") == "# wind doc\n## Available APIs\n### query"
     assert route.call_count == 2
 
 
@@ -372,7 +449,9 @@ async def test_token_from_auth_file_used_with_same_device_id(monkeypatch, tmp_pa
     f = _write_auth(tmp_path / "kimi-1.json")
     monkeypatch.setenv("KIMI_AUTH_FILE", str(f))
     respx.post(DEFAULT_KIMI_BASE_URL).respond(200, json={
-        "is_success": True, "result": {"user": [{"type": "text", "text": "ok"}]}})
+        "is_success": True,
+        "result": {"user": [{"type": "text",
+                             "text": "# wind doc\n## Available APIs\n### query"}]}})
     p = KimiProvider(get_settings())
     await p.describe("wind")
     req = respx.calls[0].request
@@ -392,7 +471,9 @@ async def test_self_refresh_writes_back_when_expired(monkeypatch, tmp_path):
         "access_token": "new-at", "refresh_token": "new-rt", "expires_in": 900,
         "token_type": "Bearer"})
     respx.post(DEFAULT_KIMI_BASE_URL).respond(200, json={
-        "is_success": True, "result": {"user": [{"type": "text", "text": "ok"}]}})
+        "is_success": True,
+        "result": {"user": [{"type": "text",
+                             "text": "# wind doc\n## Available APIs\n### query"}]}})
     p = KimiProvider(get_settings())
     await p.describe("wind")
     req = respx.calls[-1].request
@@ -416,7 +497,7 @@ async def test_write_back_preserves_file_mode(monkeypatch, tmp_path):
     monkeypatch.setenv("KIMI_AUTH_FILE", str(f))
     respx.post("https://auth.kimi.com/api/oauth/token").respond(200, json={
         "access_token": "new-at", "refresh_token": "new-rt", "expires_in": 900})
-    respx.post(DEFAULT_KIMI_BASE_URL).respond(200, json=_ok("ok"))
+    respx.post(DEFAULT_KIMI_BASE_URL).respond(200, json=_ok("# wind doc\n## Available APIs\n### query"))
     p = KimiProvider(get_settings())
     await p.describe("wind")
     assert stat.S_IMODE(f.stat().st_mode) == 0o600
@@ -463,7 +544,7 @@ async def test_proxy_url_available_and_no_auth_header(monkeypatch):
     for v in ("KIMI_ACCESS_TOKEN", "KIMI_AUTH_FILE"):
         monkeypatch.delenv(v, raising=False)
     monkeypatch.setenv("KIMI_PROXY_URL", PROXY_URL)
-    respx.post(PROXY_URL).respond(200, json=_ok("# sp_data doc"))
+    respx.post(PROXY_URL).respond(200, json=_ok("# sp_data doc\n## Available APIs\n### query"))
     p = KimiProvider(get_settings())
     assert p.available()
     doc = await p.describe("sp_data")
@@ -481,10 +562,10 @@ async def test_proxy_url_beats_direct_token(monkeypatch):
     the proxy strips this header before talking to Kimi."""
     monkeypatch.setenv("KIMI_PROXY_URL", PROXY_URL)
     monkeypatch.setenv("KIMI_ACCESS_TOKEN", "mgmt_key_for_cliproxy")
-    respx.post(PROXY_URL).respond(200, json=_ok("via proxy"))
-    respx.post(DEFAULT_KIMI_BASE_URL).respond(200, json=_ok("via direct"))
+    respx.post(PROXY_URL).respond(200, json=_ok("# doc\n## Available APIs\n### query"))
+    respx.post(DEFAULT_KIMI_BASE_URL).respond(200, json=_ok("# doc\n## Available APIs\n### query"))
     p = KimiProvider(get_settings())
-    assert await p.describe("imf") == "via proxy"
+    assert await p.describe("imf") == "# doc\n## Available APIs\n### query"
     assert respx.calls[0].request.url.host == "kimi-proxy"
     # Management key flows to the proxy endpoint so the host middleware accepts.
     assert respx.calls[0].request.headers["authorization"] == "Bearer mgmt_key_for_cliproxy"
@@ -496,9 +577,9 @@ async def test_proxy_url_without_token_sends_no_auth_header(monkeypatch):
     monkeypatch.setenv("KIMI_PROXY_URL", PROXY_URL)
     monkeypatch.delenv("KIMI_ACCESS_TOKEN", raising=False)
     monkeypatch.delenv("KIMI_AUTH_FILE", raising=False)
-    respx.post(PROXY_URL).respond(200, json=_ok("anon ok"))
+    respx.post(PROXY_URL).respond(200, json=_ok("# imf doc\n## Available APIs\n### query"))
     p = KimiProvider(get_settings())
-    assert await p.describe("imf") == "anon ok"
+    assert await p.describe("imf") == "# imf doc\n## Available APIs\n### query"
     assert "authorization" not in respx.calls[0].request.headers
     assert respx.calls[0].request.headers["x-msh-device-id"]
 

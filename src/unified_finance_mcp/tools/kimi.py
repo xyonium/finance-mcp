@@ -5,37 +5,47 @@ kimi_datasource actions:
   describe — self-describing API doc for one source (24h cached upstream)
   call     — direct datasource call (auto file_path, files landed on disk)
 
-get_company_risk_cn: resolves the tianyancha FULL company name via search
-first (tianyancha requires it), then aggregates the requested aspects; a
-single failing aspect is recorded in aspect_errors, not fatal. api_names are
-probed in candidate order (drift-tolerant) with a describe() doc fallback in
-the hint (self-description instead of hard failure).
+get_company_risk_cn: resolves the tianyancha FULL company name via
+tianyancha_company_search (tianyancha rejects 简称 on the data APIs), then
+fans out per aspect through tianyancha_api_call with `{api_call_name,
+api_call_params: {keyword: full_name}}` — the source exposes 226 data APIs
+behind that single meta-API, so ASPECT_APIS carries api_search keywords
+(live-verified names first) rather than guessed endpoint names. A single
+failing aspect is recorded in aspect_errors, not fatal.
 
 The container layer never raises: ProviderError kinds (auth / rate_limited /
-not_found / ...) are preserved as "kind: msg" (T14 ruling-9 parity).
+not_found / ...) are preserved as the error payload (T14 ruling-9 parity).
 """
 from __future__ import annotations
 
+import csv
+import io
+import re
+from pathlib import Path
 from typing import Any
 
 from ..config import get_settings
 from ..errors import ProviderError, tool_error
 from ..providers.kimi import KimiProvider
 
-ASPECT_APIS = {  # 首选 api_name 候选（实现时先 describe("tianyancha") 核对，漂移时按候选顺序探测）
-    "profile": ["company_profile", "get_company_info", "base_info"],
-    "shareholders": ["shareholders", "get_shareholders"],
-    "executives": ["executives", "get_executives", "management"],
-    "judicial": ["judicial_risk", "get_judicial_risk", "lawsuits"],
-    "operation": ["operation_risk", "get_operation_risk", "business_risk"],
-    "equity_penetration": ["equity_penetration", "get_equity_structure", "ownership_structure"],
-    "related_graph": ["related_graph", "get_related_companies", "related_parties"],
+# api_search keywords per aspect (not endpoint names). The first phrase of
+# each entry is also the expected live api_call_name prefix; _probe_aspect
+# tries those api_call_name candidates directly and falls back to an
+# api_search round-trip so upstream drift self-heals at runtime.
+ASPECT_APIS = {
+    "profile": ["工商信息-企业基本信息", "企业基本信息"],
+    "shareholders": ["工商信息-企业股东", "股东信息"],
+    "executives": ["工商信息-主要人员", "主要人员 高管"],
+    "judicial": ["司法风险-法律诉讼", "法律诉讼 司法风险"],
+    "operation": ["经营风险-行政处罚", "经营风险 行政处罚"],
+    "equity_penetration": ["工商信息-股权穿透", "股权穿透 企业受益所有人"],
+    "related_graph": ["工商信息-分支机构", "集团谱系 分支机构 关联企业"],
 }
 
 _DEFAULT_ASPECTS = tuple(ASPECT_APIS)
-_SEARCH_APIS = ["search_company", "search"]
 
-_KIMI_HINT = ("设 KIMI_PROXY_URL 指 kimi-datasource-proxy 容器，"
+_KIMI_HINT = ("设 KIMI_PROXY_URL 指 cliproxy kimi-tools 管理端点"
+              "（若该端点要求鉴权，请把 KIMI_ACCESS_TOKEN 设为 cliproxy 管理 key），"
               "或 KIMI_ACCESS_TOKEN 直注，"
               "或 KIMI_AUTH_FILE 指 cliproxy 的 auths/kimi-*.json")
 
@@ -106,8 +116,8 @@ async def kimi_datasource(action: str = "list", source: str | None = None,
                             _describe_action(p, source))
     if not source or not api:
         return tool_error("call needs source and api",
-                          hint="如 source='tianyancha' api='search_company' "
-                               "params={'keyword': '腾讯'}")
+                          hint="如 source='tianyancha' api='tianyancha_company_search' "
+                               "params={'search_keyword': '腾讯'}")
     return await _guard("kimi_datasource:call", p.call(source, api, params or {}))
 
 
@@ -115,44 +125,124 @@ async def _describe_action(p: KimiProvider, source: str) -> dict:
     return {"source": source, "doc": await p.describe(source)}
 
 
-async def _probe_api(p: KimiProvider, source: str, candidates: list[str],
-                     params: dict, aspect: str) -> dict:
-    """Try api_name candidates in order; API_NOT_FOUND moves to the next.
-
-    Non-missing failures (auth/rate/unavailable) abort probing. All candidates
-    missing -> describe() doc in the error hint (self-description fallback).
-    """
-    for api in candidates:
+def _parse_api_search_names(text: str) -> list[str]:  # noqa: D103
+    """api_call_name candidates out of a tianyancha_api_search preview
+    (`api_name` column of the results table; names are Chinese like
+    `工商信息-企业基本信息（含主要人员）`)."""
+    names: list[str] = []
+    for line in (text or "").splitlines():
         try:
-            return await p.call(source, api, params)
+            # Table row shape: "<idx>  <api_name>  <params>" (idx is a digit).
+            parts = line.strip().split(None, 2)
+            if not (len(parts) >= 2 and parts[0].isdigit()):
+                continue
+            cand = parts[1].strip()
+        except (ValueError, IndexError):
+            continue
+        if not cand:
+            continue
+        if cand.startswith(("工商信息-", "司法风险-", "经营风险-", "知识产权-",
+                            "企业发展-", "上市信息-", "历史信息-", "人员风险-")):
+            if cand not in names:
+                names.append(cand)
+    return names
+
+
+def _first_csv_name(text: str) -> str | None:
+    """First data row's company-name column from a tianyancha search CSV.
+
+    Column priority: explicit `name` company-name column -> a bare one-column
+    CSV row containing a company keyword -> the LAST header column whose
+    single row is a company full-name. Banner text ("# Tianyancha Query OK",
+    "saved_files: ...", prose) never matches any of those shapes.
+    """
+    try:
+        rows = list(csv.DictReader(io.StringIO(text or "")))
+    except csv.Error:
+        rows = []
+    company_re = re.compile(r"公司|集团|企业|厂|店|院|银行|事务所|合作社")
+    for row in rows:
+        name = (row.get("name") or "").strip()
+        if name:
+            return name
+    if rows and len(rows[0]) == 1:
+        # 单列 fallback：仅当行内容像公司名时才返回，避免 banner/prose 被吞。
+        val = (next((v for v in rows[0].values() if isinstance(v, str)), "") or "").strip()
+        return val if company_re.search(val) else None
+    for row in rows:
+        # DictReader may put a list under the `None` restkey for wide rows;
+        # only string cells can be company names.
+        vals = [v.strip() for v in row.values()
+                if isinstance(v, str) and v.strip()]
+        if len(vals) == 1 and company_re.search(vals[0]):
+            return vals[0]
+    return None
+
+
+async def _resolve_full_name(p: KimiProvider, company: str) -> str:
+    """tianyancha data APIs require the FULL company name: resolve via
+    tianyancha_company_search (first CSV row's company-name column); fall
+    back to the input on any failure so the aggregation still runs."""
+    try:
+        result = await p.call("tianyancha", "tianyancha_company_search",
+                              {"search_keyword": company})
+    except ProviderError:
+        return company
+    preview = str(result.get("data_preview") or "")
+    name = _first_csv_name(preview)
+    if name:
+        return name
+    # saved_files are local paths, not CSV contents; read the first one from
+    # disk only when the preview gave nothing (payload landed on disk). CSVs
+    # Kimi lands are small (<1MB), so a plain sync read is acceptable.
+    for path in result.get("saved_files") or []:
+        try:
+            text = Path(path).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        name = _first_csv_name(text)
+        if name:
+            return name
+    return company
+
+
+async def _probe_aspect(p: KimiProvider, aspect: str,
+                        full_name: str) -> dict:
+    """call tianyancha_api_call for one aspect: live-verified api_call_name
+    candidates first, then an api_search fallback round-trip (upstream drift
+    self-heals at runtime)."""
+    phrasings = ASPECT_APIS[aspect]
+
+    async def _call(api_name: str) -> dict:
+        return await p.call("tianyancha", "tianyancha_api_call",
+                            {"api_call_name": api_name,
+                             "api_call_params": {"keyword": full_name}})
+
+    for cand in phrasings:  # phrasing == expected api_call_name prefix
+        try:
+            return await _call(cand)
         except ProviderError as e:
             if not _is_api_missing(e):
                 raise
             continue
-    doc = await p.describe(source)
-    raise ProviderError(f"kimi: no working {source} api for {aspect} among "
-                        f"{candidates}; doc: {str(doc)[:2000]}")
-
-
-def _is_error_text(text: str) -> bool:
-    low = text.lower()
-    return low.startswith("error") or "not_found" in low
-
-
-async def _resolve_full_name(p: KimiProvider, company: str) -> str:
-    """tianyancha requires the company FULL name: search first, take the
-    first result line; fall back to the input on an empty/error preview OR
-    when every search candidate misses (the tool must still aggregate)."""
-    try:
-        result = await _probe_api(p, "tianyancha", _SEARCH_APIS,
-                                  {"keyword": company}, "search")
-    except ProviderError:
-        return company
-    text = str(result.get("data_preview") or "")
-    first = next((line.strip() for line in text.splitlines() if line.strip()), None)
-    if first and not _is_error_text(first):
-        return first
-    return company
+    doc = None  # api_search fallback (self-heal on prefix drift)
+    for phrasing in phrasings:
+        try:
+            search = await p.call("tianyancha", "tianyancha_api_search",
+                                  {"query": phrasing})
+        except ProviderError:
+            continue
+        doc = doc or str(search.get("data_preview") or "")
+        for name in _parse_api_search_names(str(search.get("data_preview") or ""))[:3]:
+            try:
+                return await _call(name)
+            except ProviderError as e:
+                if not _is_api_missing(e):
+                    raise
+                continue  # stale discovered name -> try the next discovered name
+    raise ProviderError(
+        f"kimi: no working tianyancha api_call_name for {aspect}"
+        + (f"; api_search said: {doc[:1600]}" if doc else ""))
 
 
 async def get_company_risk_cn(company: str, aspects: list | None = None,
@@ -181,12 +271,10 @@ async def get_company_risk_cn(company: str, aspects: list | None = None,
         aspect_errors: dict[str, str] = {}
         for aspect in wanted:
             try:
-                out_aspects[aspect] = await _probe_api(
-                    p, "tianyancha", ASPECT_APIS[aspect],
-                    {"name": full_name}, aspect)
+                out_aspects[aspect] = await _probe_aspect(p, aspect, full_name)
             except ProviderError as e:
-                # No [:200] cut: a describe() fallback embeds the source doc
-                # here so the caller can self-select the right api_name.
+                # No [:200] cut: an api_search fallback embeds the discovered
+                # API names here so the caller can self-select the right one.
                 aspect_errors[aspect] = f"{e.kind}: {e!s}"
             except Exception as e:  # noqa: BLE001
                 aspect_errors[aspect] = f"{type(e).__name__}: {str(e)[:200]}"

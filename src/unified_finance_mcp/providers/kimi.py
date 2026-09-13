@@ -303,16 +303,38 @@ class KimiProvider(Provider):
         return body if isinstance(body, dict) else {"raw": body}
 
     async def describe(self, source: str) -> str:
+        if source not in KNOWN_SOURCES:
+            raise NotFound(f"kimi: unknown datasource {source!r}; "
+                           f"known: {', '.join(KNOWN_SOURCES)}")
         cached = _DESC_CACHE.get(source)
         if cached and time.time() - cached[0] < _DESC_TTL:
             return cached[1]
         body = await self._invoke("get_data_source_desc", {"name": source})
-        result = body.get("result") if isinstance(body, dict) else None
-        text = _extract_user_text(result)
-        if not text:
-            raise UpstreamError(f"kimi describe({source}): no doc text in response")
+        text = self._desc_text(body)
+        if not text or "###" not in text:
+            # Guard 2: some sources describe to a near-empty skeleton
+            # ("# \n\n**Description:** \n\n## Available APIs") — truthy, so
+            # without the API-name check it got cached 24h as garbage.
+            raise UpstreamError(
+                f"kimi describe({source}): no usable doc in upstream response")
         _DESC_CACHE[source] = (time.time(), text)
         return text
+
+    @staticmethod
+    def _desc_text(body: Any) -> str:
+        """Doc text from either wire shape. Official upstream envelope:
+        {"result": {"user"|"assistant": [{"type": "text", ...}]}}. The
+        cliproxy kimi-tools proxy instead returns the bare markdown doc as a
+        top-level JSON string, which _invoke surfaces as {"raw": <str>}.
+        """
+        if isinstance(body, dict):
+            raw = body.get("raw")
+            if isinstance(raw, str):
+                return raw
+            return _extract_user_text(body.get("result"))
+        if isinstance(body, str):
+            return body
+        return ""
 
     async def call(self, source: str, api: str, params: dict) -> dict:
         merged = dict(params or {})
@@ -322,13 +344,51 @@ class KimiProvider(Provider):
         body = await self._invoke("call_data_source_tool", {
             "data_source_name": source, "api_name": api, "params": merged})
         result = body.get("result") if isinstance(body, dict) else None
-        text = _extract_user_text(result)
+        text, notice = self._extract_call_result(result)
         files = body.get("files") if isinstance(body, dict) else None
         saved = await self._save_files(files or [])
-        return {"data_preview": text,
-                "saved_files": saved,
-                "source": source,
-                "api": api}
+        if text.lstrip().startswith("# Tianyancha Query OK"):
+            # The tabular data landed in the CSV; the assistant text is just
+            # the success banner. Prepend the saved-file path so callers can
+            # find the payload.
+            text = f"saved_files: {saved[0]}\n{text}" if saved else text
+        out = {"data_preview": text,
+               "saved_files": saved,
+               "source": source,
+               "api": api}
+        if notice:
+            out["notice"] = notice
+        return out
+
+    @classmethod
+    def _extract_call_result(cls, result: Any) -> tuple[str, str | None]:
+        """(preview_text, notice) from a call_data_source_tool `result` block.
+
+        Two live-verified shapes (2026-09-13):
+          1. official:  {"user":[{"type":"text","text": <csv-or-text>}]}
+          2. kimi-sources nest: the assistant text is a stringified JSON dict
+             {"data_preview": <csv|null>, "notice": ...} — e.g. stock_finance
+             embeds 10k+ row CSVs this way (scholar does NOT nest).
+        """
+        outer = _extract_user_text(result)
+        if not outer:
+            return "", None
+        stripped = outer.lstrip()
+        if not stripped.startswith("{"):
+            return outer, None
+        try:
+            inner = json.loads(outer)
+        except (ValueError, TypeError):
+            return outer, None
+        if not isinstance(inner, dict):
+            return outer, None
+        preview = inner.get("data_preview")
+        preview_s = preview if isinstance(preview, str) else ""
+        notice = inner.get("notice")
+        notice_s = notice if isinstance(notice, str) and notice else None
+        # Nested preview wins; fall back to the outer text when the inner
+        # envelope carries no data_preview of its own.
+        return (preview_s or outer), notice_s
 
     async def _save_files(self, files: list) -> list[str]:
         out: list[str] = []
