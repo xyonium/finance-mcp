@@ -5,7 +5,9 @@ from ..errors import tool_error
 from ..symbols import parse_symbol
 from ._routing import route_and_call
 
-CHAIN = ["futu", "yahoo", "fmp", "alphavantage"]
+# eastmoney heads the CN sub-chain (keyless push2his klines); its covers()
+# is CN-only so every other market skips it without a call.
+CHAIN = ["eastmoney", "futu", "yahoo", "fmp", "alphavantage"]
 
 
 def register(mcp, providers, settings) -> None:
@@ -15,11 +17,12 @@ def register(mcp, providers, settings) -> None:
         """Get OHLCV history (K-line) for one symbol.
 
         `interval` is a yfinance-style interval (1d/1wk/1mo/1h/30m/15m/5m/1m);
-        each source maps the subset it supports. `start`/`end` are inclusive
+        each source maps the subset it supports (eastmoney serves 1d/1wk/1mo
+        for CN A-shares only). `start`/`end` are inclusive
         YYYY-MM-DD strings; omitted means the source's default window. Accepts
         futu (HK.00700), yahoo (0700.HK, COMI.CA) or TradingView (EGX:COMI)
-        symbol forms; bare tickers default to US. `source` may be auto | futu |
-        yahoo | fmp | alphavantage. Returns {"data": [bar, ...]} on success, or
+        symbol forms; bare 6-digit codes are A-shares. `source` may be auto |
+        eastmoney | futu | yahoo | fmp | alphavantage. Returns {"data": [bar, ...]} on success, or
         the routing error dict at the top level on failure — callers check
         `"error" in out` (T11-T13 follow the same convention).
         """

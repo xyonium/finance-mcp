@@ -9,6 +9,7 @@ def build_providers(settings: Settings) -> dict[str, Provider]:
     from . import (
         alphavantage,
         cex,
+        eastmoney,
         fmp,
         futu_bridge,
         kimi,
@@ -25,6 +26,7 @@ def build_providers(settings: Settings) -> dict[str, Provider]:
         alphavantage.AlphaVantageProvider(settings),
         marketaux.MarketauxProvider(settings),
         futu_bridge.FutuProvider(settings),
+        eastmoney.EastmoneyProvider(settings),
         kimi.KimiProvider(settings),
         macro.MacroProvider(settings),
     ]

@@ -5,7 +5,9 @@ from ..errors import tool_error
 from ..symbols import parse_symbol
 from ._routing import route_and_call
 
-CHAIN = ["futu", "yahoo", "fmp", "alphavantage"]
+# eastmoney heads the CN sub-chain (keyless push2, no OpenD dependency); its
+# covers() is CN-only so every other market skips it without a call.
+CHAIN = ["eastmoney", "futu", "yahoo", "fmp", "alphavantage"]
 
 
 def register(mcp, providers, settings) -> None:
@@ -14,8 +16,9 @@ def register(mcp, providers, settings) -> None:
         """Get latest price/quote snapshot for one or more symbols.
 
         Accepts futu (HK.00700), yahoo (0700.HK, COMI.CA) or TradingView
-        (EGX:COMI) symbol forms; bare tickers default to US. `source` may be
-        auto | futu | yahoo | fmp | alphavantage.
+        (EGX:COMI) symbol forms; bare 6-digit codes are A-shares. `source`
+        may be auto | eastmoney | futu | yahoo | fmp | alphavantage
+        (eastmoney covers CN A-shares only).
 
         IMPORTANT (read before batching):
         - Result is per-symbol partial: each key in `data` either holds a quote

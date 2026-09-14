@@ -5,7 +5,7 @@ from unified_finance_mcp.providers import build_providers
 def test_registry_keys():
     ps = build_providers(get_settings())
     assert set(ps) == {"yahoo", "tradingview", "fmp", "alphavantage", "marketaux",
-                       "futu", "kimi", "macro", "cex"}
+                       "futu", "eastmoney", "kimi", "macro", "cex"}
 
 
 def test_cex_absent_when_disabled(monkeypatch):
@@ -22,6 +22,14 @@ def test_keyless_available_and_coverage():
     assert not ps["futu"].covers("EG")        # futu: no Egypt
     assert ps["futu"].covers("HK")
     assert not ps["alphavantage"].covers("EG")
+
+
+def test_eastmoney_keyless_cn_only():
+    """R19: eastmoney is keyless (available() always True) and CN-gated."""
+    ps = build_providers(get_settings())
+    assert ps["eastmoney"].available()
+    assert ps["eastmoney"].covers("CN")
+    assert not ps["eastmoney"].covers("US") and not ps["eastmoney"].covers("HK")
 
 
 def test_macro_keyless_always_available():

@@ -34,6 +34,11 @@ DEFAULT_FMP_BASE_URL = "https://financialmodelingprep.com"
 DEFAULT_AV_BASE_URL = "https://www.alphavantage.co"
 DEFAULT_MARKETAUX_BASE_URL = "https://api.marketaux.com"
 DEFAULT_KIMI_BASE_URL = "https://api.kimi.com/coding/v1/tools"
+# Eastmoney is keyless: one base per face because EM serves them off three
+# different public hosts (realtime / kline history / symbol suggest).
+DEFAULT_EASTMONEY_QUOTE_BASE_URL = "https://push2.eastmoney.com"
+DEFAULT_EASTMONEY_HISTORY_BASE_URL = "https://push2his.eastmoney.com"
+DEFAULT_EASTMONEY_SEARCH_BASE_URL = "https://searchapi.eastmoney.com"
 # Native macro provider sub-endpoint bases (R18). WB/IMF are keyless; FRED is
 # free-registration-keyed. EDGAR/ECB/OECD/EUROSTAT are declared for the
 # tombstoned follow-up providers (see providers/macro.py docstring) so their
@@ -71,6 +76,14 @@ class Settings:
     kimi_auth_file: str = field(default_factory=lambda: _env("KIMI_AUTH_FILE"))
     kimi_base_url: str = field(default_factory=lambda: _env("KIMI_BASE_URL", DEFAULT_KIMI_BASE_URL))
     kimi_files_dir: str = field(default_factory=lambda: _env("KIMI_FILES_DIR", "/tmp/unified_finance_mcp"))
+    # eastmoney: keyless — no api-key field; base overrides exist for testing
+    # and for pointing at a mirror/rotator of the public hosts.
+    eastmoney_quote_base_url: str = field(
+        default_factory=lambda: _env("EASTMONEY_QUOTE_BASE_URL", DEFAULT_EASTMONEY_QUOTE_BASE_URL))
+    eastmoney_history_base_url: str = field(
+        default_factory=lambda: _env("EASTMONEY_HISTORY_BASE_URL", DEFAULT_EASTMONEY_HISTORY_BASE_URL))
+    eastmoney_search_base_url: str = field(
+        default_factory=lambda: _env("EASTMONEY_SEARCH_BASE_URL", DEFAULT_EASTMONEY_SEARCH_BASE_URL))
     cex_enabled: bool = field(default_factory=lambda: _env_bool("FINANCE_MCP_CEX", True))
     cex_exchanges: tuple[str, ...] = field(
         default_factory=lambda: tuple(
