@@ -48,6 +48,29 @@ class PoliteClient:
             return min(float(ra), _MAX_RETRY_AFTER)
         return 0.5 * (2 ** attempt)
 
+    async def get_response(self, url: str, params: dict | None = None,
+                           headers: dict | None = None) -> httpx.Response:
+        """Raw GET returning the httpx.Response untouched — the caller maps
+        status codes and error bodies itself (e.g. FRED, which puts its
+        error_code JSON in a 200 body for quota/auth but a real 400 for a
+        malformed api_key). Same pacing/retry discipline as get_json."""
+        host = urlparse(url).netloc
+        last: Exception | None = None
+        for attempt in range(self._max_retries + 1):
+            await self._pace(host)
+            try:
+                resp = await self._client.get(url, params=params, headers=headers)
+            except httpx.HTTPError as e:
+                last = UpstreamError(f"network error from {host}: {e}")
+                await asyncio.sleep(0.5 * (2 ** attempt))
+                continue
+            if resp.status_code in (429, 503):
+                last = RateLimited(f"HTTP {resp.status_code} from {host}")
+                await asyncio.sleep(self._retry_after(resp, attempt))
+                continue
+            return resp
+        raise last if last is not None else UpstreamError(f"request to {host} failed")
+
     async def get_json(self, url: str, params: dict | None = None,
                        headers: dict | None = None) -> Any:
         host = urlparse(url).netloc

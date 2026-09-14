@@ -123,8 +123,10 @@ async def test_observations_rejects_bad_sort_order_no_http(monkeypatch):
 @respx.mock
 async def test_observations_bad_key_is_auth_error_scrubbed(monkeypatch):
     """Standalone boundary ruling: no chain here, so a bad key is AuthError
-    (macro maps it to NotFound so its sub-source chain can walk on)."""
-    respx.get(OBS).respond(200, json={
+    (macro maps it to NotFound so its sub-source chain can walk on). FRED
+    returns a real HTTP 400 for a malformed key, not the 200+error_code body
+    used for quota, so both shapes must reach the AuthError branch."""
+    respx.get(OBS).respond(400, json={
         "error_code": 400,
         "error_message": "Bad Request. The value for variable api_key is "
                          "not a 32-character key: test-key"})
@@ -151,6 +153,28 @@ async def test_observations_other_error_body_is_upstream(monkeypatch):
         "error_code": 500, "error_message": "internal melt"})
     p = make_provider(monkeypatch)
     with pytest.raises(UpstreamError, match="internal melt"):
+        await p.series_observations("GDP")
+
+
+@respx.mock
+async def test_observations_http_400_non_apikey_body_is_upstream(monkeypatch):
+    """FRED also returns HTTP 400 for bad series_id/windows, which is not an
+    auth problem — keep that off AuthError and on the generic UpstreamError
+    so route_and_call/tool_error keep the category honest."""
+    respx.get(OBS).respond(400, json={
+        "error_code": 400,
+        "error_message": "Bad Request. Invalid value for variable series_id."})
+    p = make_provider(monkeypatch)
+    with pytest.raises(UpstreamError, match="series_id"):
+        await p.series_observations("GDP")
+
+
+@respx.mock
+async def test_observations_http_500_no_json_body_is_upstream(monkeypatch):
+    """Non-JSON 5xx should not leak as a raw JSONDecodeError."""
+    respx.get(OBS).respond(500, text="<html>proxy error</html>")
+    p = make_provider(monkeypatch)
+    with pytest.raises(UpstreamError, match="non-JSON body"):
         await p.series_observations("GDP")
 
 

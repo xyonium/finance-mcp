@@ -67,19 +67,24 @@ class FredProvider(Provider):
         """GET {base}/fred/{endpoint} with the FRED error-body mapping.
 
         FRED signals auth/quota problems as HTTP 200 + error_code body, so
-        status-code handling alone is not enough.
+        status-code handling alone is not enough. But a **malformed key**
+        (wrong length/charset) is a real HTTP 400 with the same error_code
+        JSON body — PoliteClient turns that into a blunt UpstreamError
+        before we ever see the body. So the client is asked for the raw
+        response here and the error mapping runs on both paths.
         """
         key = self.settings.fred_api_key
         if not key:
             raise NotFound(f"fred: FRED_API_KEY not configured [{_KEY_HINT}]")
         url = f"{self.settings.fred_base_url.rstrip('/')}/{endpoint}"
         try:
-            data = await self._get_client().get_json(
+            resp = await self._get_client().get_response(
                 url, params={**params, "api_key": key, "file_type": "json"})
         except UpstreamError as e:
             raise UpstreamError(scrub(f"fred: {e}", key)) from e
+        try:
+            data = resp.json()
         except ValueError as e:
-            # 200 with a non-JSON body must not escape as raw JSONDecodeError.
             raise UpstreamError(f"fred: non-JSON body from "
                                 f"{scrub(url, key)}") from e
         if not isinstance(data, dict):
@@ -94,6 +99,9 @@ class FredProvider(Provider):
             if code == 400 and "api_key" in str(err):
                 raise AuthError(f"fred: {msg} [{_KEY_HINT}]")
             raise UpstreamError(f"fred: {msg}")
+        if resp.status_code >= 400:
+            raise UpstreamError(scrub(
+                f"fred: HTTP {resp.status_code} from {url.split('/')[2]}", key))
         return data
 
     async def series_observations(self, series_id: str,
