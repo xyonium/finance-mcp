@@ -125,6 +125,30 @@ Free API token: <https://www.marketaux.com/register>
 | `MARKETAUX_API_TOKEN` | marketaux news API token | — |
 | `MARKETAUX_BASE_URL` | Endpoint override (rotator-friendly), e.g. `http://api-key-rotator:8788/marketaux` | `https://api.marketaux.com` |
 
+### Native macro (World Bank / IMF keyless + optional FRED)
+
+World Bank and IMF sub-endpoints are **keyless** (always on). FRED unlocks
+monthly-frequency US series (CPI index, fed funds, 10Y yield, payrolls,
+retail sales) when configured.
+
+Free API key (5-minute registration): <https://fredaccount.stlouisfed.org/apikeys>
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `FRED_API_KEY` | FRED API key (optional; without it macro falls back to keyless World Bank/IMF) | — |
+| `WORLD_BANK_BASE_URL` / `IMF_BASE_URL` / `FRED_BASE_URL` | Endpoint overrides (mirror/rotator-friendly) | official hosts |
+| `SEC_EDGAR_BASE_URL` / `ECB_BASE_URL` / `OECD_BASE_URL` / `EUROSTAT_BASE_URL` | Reserved for tombstoned follow-up providers (SDMX/XBRL; not yet wired) | official hosts |
+
+### Eastmoney (CN A-share, keyless)
+
+Keyless public JSON endpoints (push2 / push2his / searchapi) — CN-market
+chain head for `get_quote` / `get_history`. No key required, no key field
+exists; base overrides exist for testing/mirroring only.
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `EASTMONEY_QUOTE_BASE_URL` / `EASTMONEY_HISTORY_BASE_URL` / `EASTMONEY_SEARCH_BASE_URL` | Endpoint overrides | EM public hosts |
+
 ### Kimi Datasource
 
 Auth resolution order: `KIMI_PROXY_URL` → `KIMI_ACCESS_TOKEN` → `KIMI_AUTH_FILE`.
