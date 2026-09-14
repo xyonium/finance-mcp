@@ -70,6 +70,33 @@
 
 **探测衰减点验证**：R17 第 6 轮 82/82 候选全 miss，意味着我们已遍历 kimi 当前全量。
 
+## R18 官方 enum 补漏轮（2026-09-13/14）：8 个新源，全部摘
+
+对照官方插件 enum（`kimi-code/plugins/official/kimi-datasource/bin/kimi-datasource.mjs`，硬编码 25 源）发现 R1-R17 brute-force 漏掉的 8 源（enum 新增，此前未被候选字典覆盖）：
+
+| # | kimi source | 域 | 裁决 | 证据 |
+|---|-------------|---|-----|-----|
+| 24 | china_nda | 国家数据局登记平台 | **摘** | [R18-china_nda](kimi-sources/china_nda.verdict.md) — sjdj.nda.gov.cn 免鉴权 JSON 薄包装 |
+| 25 | china_nbs | 国家统计局 | **摘** | [R18-china_nbs](kimi-sources/china_nbs.verdict.md) — data.stats.gov.cn 免 key（akshare 已逆向） |
+| 26 | china_standards | 国标/行标/地标/团标 | **摘** | [R18-china_standards](kimi-sources/china_standards.verdict.md) — 四官方平台免 key 直连 |
+| 27 | who | WHO 卫生指标 | **摘** | [R18-who](kimi-sources/who.verdict.md) — GHO OData 免 key 1:1 转发 |
+| 28 | fao | 粮农组织 | **摘** | [R18-fao](kimi-sources/fao.verdict.md) — FAOSTAT 官方 bulk zip 白名单子集 |
+| 29 | unsd | 联合国统计 | **摘** | [R18-unsd](kimi-sources/unsd.verdict.md) — 官方 SDMX REST 免 key 双 200 实测 |
+| 30 | unicef | 儿童指标 | **摘** | [R18-unicef](kimi-sources/unicef.verdict.md) — 官方 SDMX 免 key 1:1 转发 |
+| 31 | xhcj | 新华财经资讯 | **摘** | [R18-xhcj](kimi-sources/xhcj.verdict.md) — 纯资讯流无数据面，域外 |
+
+（caixin 为 #16，已在 R15 裁决。）
+
+**32 源终局**（= 官方 enum 25 + 后端未公开 7：ifind/dongcai/pubchem/chembl/uniprot/pdb/pubmed）：留×4（tianyancha, gildata, yuandian_law, caixin）、窄化×2（wind, sp_data）、摘×26。
+
+**R19 尾声（2026-09-14）**：
+- R18 8 源补登 `DISCOURAGED_SOURCES`（此前裁决落文档但注册表漏加，enum diff 脚本首次运行即暴露此缺口）；
+- 新增 `KEPT_SOURCES` 注册表（含 caixin）——kimi.py 成为 32 源裁决的唯一真源；
+- **增量发现机制固化**：`scripts/kimi_enum_diff.py` 抓取官方 mjs 的 `get_data_source_desc` enum 与本仓注册表（KNOWN ∪ DISCOURAGED ∪ KEPT）做 diff。enum 有我们没有的 → exit 1（行动信号：探测+裁决）；反向（后端未公开源）仅信息展示。建议每个 release 前跑一次：
+  ```bash
+  .venv/bin/python scripts/kimi_enum_diff.py        # exit 1 = 有新源要裁决
+  ```
+
 ## R13 实施设计（由本评估直接推出）
 
 1. **KNOWN_SOURCES 缩到 5**：`tianyancha, gildata, yuandian_law, wind, sp_data`。

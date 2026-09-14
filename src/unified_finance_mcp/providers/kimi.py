@@ -61,6 +61,7 @@ __all__ = [
     "CAIXIN_KEPT_NAME_KEYWORDS",
     "DEFAULT_KIMI_BASE_URL",
     "DISCOURAGED_SOURCES",
+    "KEPT_SOURCES",
     "KNOWN_SOURCES",
     "SOURCE_ALLOWED_API_PREFIXES",
     "KimiProvider",
@@ -113,15 +114,35 @@ DISCOURAGED_SOURCES: dict[str, str] = {
     "oecd": "R17 摘 — sdmx.oecd.org 官方 SDMX 3.0 免 key 1:1 转发（1,546 flow + US GDP 22.6T 实测）",
     "eurostat": "R17 摘 — ec.europa.eu/eurostat 官方 dissemination API 免 key（8156 dataflow 实测；见 docs/research/kimi-sources/eurostat.verdict.md）",
     "dongcai": "R17 摘 — 东方财富/Choice：数据面即 EM 免费面（akshare 等质），7/13 是报告生成非数据",
+    # R18 (2026-09-13): the 8 sources the official enum grew server-side
+    # (enum ⊂ live backend). All live-probed and adjudicated 摘 — every one
+    # is a 1:1 mirror of a free official endpoint (see the verdict files).
+    "china_nda": "R18 摘 — 国家数据局登记平台 sjdj.nda.gov.cn 免鉴权公开 JSON 薄包装",
+    "china_nbs": "R18 摘 — data.stats.gov.cn 新版发布库免 key（akshare #7260 已逆向）",
+    "china_standards": "R18 摘 — GB/HB/DB/TT 四官方平台免 key 检索直连（std.samr/sacinfo/ttbz）",
+    "who": "R18 摘 — WHO GHO ghoapi.azureedge.net 官方 OData 免 key 1:1 转发",
+    "fao": "R18 摘 — FAOSTAT 官方 bulk zip 白名单子集（bulks-faostat.fao.org）",
+    "unsd": "R18 摘 — UNdata 官方 SDMX REST data.un.org/WS 免 key（结构+观测双 200 实测）",
+    "unicef": "R18 摘 — UNICEF SDMX sdmx.data.unicef.org 官方免 key 1:1 转发",
+    "xhcj": "R18 摘 — 新华财经纯资讯流，无行情/结构化数据；资讯域归 marketaux/fmp",
 }
 
-# KEEP list (R4/R7/R10/R15-caixin): these sources are NOT downgraded.
+# KEPT list (R4/R7/R10/R15-caixin): sources NOT downgraded, with the reason.
+# caixin is the only kept source absent from KNOWN_SOURCES (it joined the
+# backend after the seed list froze; runtime probe-verification admits it).
+# wind/sp_data appear in DISCOURAGED_SOURCES above as 保留-仅gap — their
+# gap-class traffic is what SOURCE_ALLOWED_API_PREFIXES keeps.
 # caixin stays — but NOT entire any more: the R19 task-③ param-level soft
 # router (CAIXIN_KEPT_NAME_KEYWORDS below) blocks the ~60% free-replaceable
 # categories at the caixin_call_name parameter, the level the R15 verdict
 # §2 correctly identified as the only place a gate can exist (all 687 APIs
 # ride the single caixin_api_call api name).
-# tianyancha / gildata / yuandian_law stay via zero free-equal evidence.
+KEPT_SOURCES: dict[str, str] = {
+    "tianyancha": "R4 留 — CN 工商/司法/股权穿透，免费侧无等质结构化 API",
+    "gildata": "R7 留 — 自然语言选股/研报片段，免费侧无等质",
+    "yuandian_law": "R10 留 — CN 法律法规/判例，免费侧无等质",
+    "caixin": "R15 留 + R19 参数级软路由 — 8 整类 ~200 API 免费不可替",
+}
 
 # Per-source allowed API prefixes. Empty/absent entry = unrestricted.
 # For wind/sp_data (R8/R12 保留-仅gap): only the gap-classes are allowed
