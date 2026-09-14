@@ -335,6 +335,61 @@ async def test_call_falls_back_to_outer_when_no_data_preview_in_nested(monkeypat
 
 
 @respx.mock
+async def test_call_b4_tianyancha_api_search_degenerate_user_channel(monkeypatch):
+    """B4 (tianyancha_api_search, live-probed 2026-09-13): the user channel
+    carries a degenerate {"data_preview": null} envelope (truthy string, so the
+    B1 `if not outer` fallback never fires) while the real payload rides the
+    ASSISTANT channel's inner JSON under a STRING `is_success` key. Both
+    channels HTML-escape their inner quotes (&#34;), which breaks a plain
+    json.loads. Extraction must unescape, prefer the assistant payload, and
+    surface the search-results table."""
+    table = ("# Tianyancha API Search Results\nQuery: 股权穿透, Results Count: 3"
+             "\n\n## Available APIs (3 found)\n api_name params desc\n"
+             "0 工商信息-股权穿透 keyword\n1 工商信息-对外投资 keyword")
+    # HTML-escaped stringified JSON, exactly as upstream sends it.
+    asst_text = json.dumps({
+        "is_success": "tianyancha, " + table,
+        "data_preview": None,
+        "notice": ""}, ensure_ascii=False).replace('"', "&#34;")
+    user_text = json.dumps({"data_preview": None}).replace('"', "&#34;")
+    respx.post(DEFAULT_KIMI_BASE_URL).respond(200, json={
+        "is_success": True, "files": [],
+        "result": {
+            "assistant": [{"type": "text", "text": asst_text}],
+            "user": [{"type": "text", "text": user_text}]}})
+    p = make_provider(monkeypatch)
+    out = await p.call("tianyancha", "tianyancha_api_search",
+                       {"query": "股权穿透"})
+    assert "# Tianyancha API Search Results" in out["data_preview"]
+    assert "工商信息-股权穿透" in out["data_preview"]
+    # The degenerate user-channel envelope must NOT leak through.
+    assert "&#34;" not in out["data_preview"]
+    assert not out["data_preview"].startswith("{")
+
+
+@respx.mock
+async def test_call_b4_boolean_is_success_not_mistaken_for_payload(monkeypatch):
+    """B4 guard: a boolean inner is_success (the normal success flag) must not
+    be treated as payload — only a non-empty string qualifies."""
+    nested = json.dumps({"is_success": True, "data_preview": None},
+                        ensure_ascii=False)
+    respx.post(DEFAULT_KIMI_BASE_URL).respond(200, json={
+        "is_success": True, "files": [],
+        "result": {"user": [{"type": "text", "text": nested}],
+                   "assistant": [{"type": "text", "text": nested}]}})
+    p = make_provider(monkeypatch)
+    from unified_finance_mcp.providers import kimi as kimi_mod
+    kimi_mod._VERIFIED_SOURCES.add("caixin")
+    try:
+        out = await p.call("caixin", "caixin_api_search", {"query": "x"})
+    finally:
+        kimi_mod._VERIFIED_SOURCES.discard("caixin")
+    # No string payload anywhere: fall back to the outer text unchanged.
+    assert out["data_preview"] == nested
+
+
+
+@respx.mock
 async def test_self_refresh_write_back_is_atomic(monkeypatch, tmp_path):
     """F2: write-back goes through tmp + os.replace under flock."""
     import os

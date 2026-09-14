@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import base64
 import fcntl
+import html
 import json
 import os
 import re
@@ -537,7 +538,7 @@ class KimiProvider(Provider):
     def _extract_call_result(cls, result: Any) -> tuple[str, str | None]:
         """(preview_text, notice) from a call_data_source_tool `result` block.
 
-        Three live-verified shapes (2026-09-13):
+        Four live-verified shapes (2026-09-13/14):
           1. official:  {"user":[{"type":"text","text": <csv-or-text>}]}
           2. kimi-sources nest (assistant inner envelope):
              {"assistant":[{"type":"text","text": <stringified JSON
@@ -545,7 +546,28 @@ class KimiProvider(Provider):
              caixin_api_search (B1). User-channel preferred when present.
           3. caixin_api_search bare-assistant: same as #2 but WITHOUT a
              user channel — B1 fix unwraps the assistant text directly.
+          4. tianyancha_api_search (B4): the USER channel carries a degenerate
+             {"data_preview": null} envelope (truthy string, so the B1
+             `if not outer` guard never fires) while the REAL payload rides
+             the assistant channel's inner JSON under the `is_success` key
+             (a string holding the search-results table). Both channels
+             HTML-escape their inner JSON quotes (&#34;), so json.loads
+             needs an html.unescape pre-pass.
         """
+        def parse_inner(text: str) -> dict | None:
+            """json.loads with an HTML-entity unescape fallback (B4)."""
+            try:
+                val = json.loads(text)
+            except (ValueError, TypeError):
+                unescaped = html.unescape(text)
+                if unescaped == text:
+                    return None
+                try:
+                    val = json.loads(unescaped)
+                except (ValueError, TypeError):
+                    return None
+            return val if isinstance(val, dict) else None
+
         outer = _extract_user_text(result)
         # B1 (caixin_api_search): assistant-channel nested envelope when the
         # user channel is empty. Shape: text may be a JSON dict literal whose
@@ -558,11 +580,8 @@ class KimiProvider(Provider):
         stripped = outer.lstrip()
         if not stripped.startswith("{"):
             return outer, None
-        try:
-            inner = json.loads(outer)
-        except (ValueError, TypeError):
-            return outer, None
-        if not isinstance(inner, dict):
+        inner = parse_inner(outer)
+        if inner is None:
             return outer, None
         preview = inner.get("data_preview")
         preview_s = preview if isinstance(preview, str) else ""
@@ -576,6 +595,22 @@ class KimiProvider(Provider):
             if not notice_s:
                 notice = nested.get("notice")
                 notice_s = notice if isinstance(notice, str) and notice else None
+        # B4 (tianyancha_api_search): user channel was a degenerate
+        # {"data_preview": null}; the assistant channel's inner JSON carries
+        # the table under a STRING `is_success` (upstream quirk — not the
+        # top-level boolean flag), falling back to its data_preview.
+        if not preview_s and isinstance(result, dict):
+            asst = _extract_user_text({"assistant": result.get("assistant")})
+            a_inner = parse_inner(asst) if asst else None
+            if a_inner:
+                for key in ("is_success", "data_preview"):
+                    v = a_inner.get(key)
+                    if isinstance(v, str) and v.strip():
+                        preview_s = v
+                        break
+                if not notice_s:
+                    notice = a_inner.get("notice")
+                    notice_s = notice if isinstance(notice, str) and notice else None
         # Nested preview wins; fall back to the outer text when the inner
         # envelope carries no data_preview of its own.
         return (preview_s or outer), notice_s

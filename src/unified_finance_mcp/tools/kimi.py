@@ -38,7 +38,10 @@ ASPECT_APIS = {
     "executives": ["工商信息-主要人员", "主要人员 高管"],
     "judicial": ["司法风险-法律诉讼", "法律诉讼 司法风险"],
     "operation": ["经营风险-行政处罚", "经营风险 行政处罚"],
-    "equity_penetration": ["工商信息-股权穿透", "股权穿透 企业受益所有人"],
+    # equity_penetration primary is live-verified 2026-09-14 via
+    # tianyancha_api_search("股权穿透") + direct api_call (returns the
+    # penetration tree for a full company name, param `keyword`).
+    "equity_penetration": ["关系发现-股权穿透图", "股权穿透 企业受益所有人"],
     "related_graph": ["工商信息-分支机构", "集团谱系 分支机构 关联企业"],
 }
 
