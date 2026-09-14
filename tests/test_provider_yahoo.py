@@ -298,11 +298,31 @@ async def test_analyst_estimates_full_shape(monkeypatch):
     t.growth_estimates = pd.DataFrame({"period": ["0q"], "stockTrend": [0.08]})
     t.eps_trend = pd.DataFrame({"period": ["0q"], "current": [1.65]})
     t.recommendations = pd.DataFrame({"period": ["0m"], "strongBuy": [12]})
+    t.upgrades_downgrades = pd.DataFrame(
+        {"firm": ["Morgan Stanley"], "toGrade": ["Overweight"],
+         "fromGrade": ["Equal-Weight"], "action": ["up"]},
+        index=pd.DatetimeIndex(["2026-09-01"], name="GradeDate"))
     p = make_provider(monkeypatch, t)
     out = await p.analyst_estimates(parse_symbol("AAPL"))
     assert out["symbol"] == "AAPL" and out["price_targets"]["mean"] == 245.3
     assert out["earnings_estimate"][0]["avg"] == 1.65
     assert len(out["recommendations"]) <= 20 and out["source"] == "yahoo"
+    ud = out["upgrades_downgrades"]
+    assert ud[0]["firm"] == "Morgan Stanley" and ud[0]["action"] == "up"
+    assert len(ud) <= 50
+
+
+async def test_analyst_estimates_upgrades_downgrades_absent_ok(monkeypatch):
+    """yfinance leaves the attr None on tickers without grade history."""
+    import pandas as pd
+    t = MagicMock()
+    t.analyst_price_targets = {"mean": 245.3}
+    t.earnings_estimate = pd.DataFrame({"period": ["0q"], "avg": [1.65]})
+    t.revenue_estimate = t.growth_estimates = t.eps_trend = None
+    t.recommendations = t.upgrades_downgrades = None
+    p = make_provider(monkeypatch, t)
+    out = await p.analyst_estimates(parse_symbol("AAPL"))
+    assert out["upgrades_downgrades"] == []
 
 
 async def test_analyst_estimates_nothing_raises_not_found(monkeypatch):

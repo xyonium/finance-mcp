@@ -275,13 +275,21 @@ class YahooProvider(Provider):
             def df_to_records(df):
                 if df is None or (hasattr(df, "empty") and df.empty):
                     return []
-                return df.reset_index().where(pd.notna(df), None).to_dict("records")
+                # notna must be computed AFTER reset_index: where() aligns on
+                # index labels, so a non-RangeIndex (e.g. upgrades_downgrades'
+                # DatetimeIndex) would misalign and blank every value.
+                df = df.reset_index()
+                return df.where(pd.notna(df), None).to_dict("records")
             return {"price_targets": pt,
                     "earnings_estimate": df_to_records(t.earnings_estimate),
                     "revenue_estimate": df_to_records(t.revenue_estimate),
                     "growth_estimates": df_to_records(t.growth_estimates),
                     "eps_trend": df_to_records(t.eps_trend),
-                    "recommendations": df_to_records(t.recommendations)[:20]}
+                    "recommendations": df_to_records(t.recommendations)[:20],
+                    # The last previously-unwired yfinance property (R2 verdict):
+                    # firm-level grade changes — firm / fromGrade / toGrade /
+                    # action / date. Capped like recommendations.
+                    "upgrades_downgrades": df_to_records(t.upgrades_downgrades)[:50]}
 
         out = await self._run(fetch_all)
         if not out["price_targets"] and not out["earnings_estimate"]:
