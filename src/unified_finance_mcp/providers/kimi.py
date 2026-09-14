@@ -52,14 +52,14 @@ from typing import Any
 import anyio
 
 from ..config import DEFAULT_KIMI_BASE_URL, Settings
-from ..errors import AuthError, NotFound, ProviderError, UpstreamError, scrub
+from ..errors import AuthError, NotFound, UpstreamError, scrub
 from ..http import PoliteClient
 from .base import Provider
 
 __all__ = [
     "DEFAULT_KIMI_BASE_URL",
-    "KNOWN_SOURCES",
     "DISCOURAGED_SOURCES",
+    "KNOWN_SOURCES",
     "SOURCE_ALLOWED_API_PREFIXES",
     "KimiProvider",
     "resolve_kimi_auth_file",

@@ -113,7 +113,7 @@ async def _describe_action(p: KimiProvider, source: str) -> dict:
     return {"source": source, "doc": await p.describe(source)}
 
 
-def _parse_api_search_names(text: str) -> list[str]:  # noqa: D103
+def _parse_api_search_names(text: str) -> list[str]:
     """api_call_name candidates out of a tianyancha_api_search preview
     (`api_name` column of the results table; names are Chinese like
     `工商信息-企业基本信息（含主要人员）`)."""
@@ -129,10 +129,10 @@ def _parse_api_search_names(text: str) -> list[str]:  # noqa: D103
             continue
         if not cand:
             continue
-        if cand.startswith(("工商信息-", "司法风险-", "经营风险-", "知识产权-",
-                            "企业发展-", "上市信息-", "历史信息-", "人员风险-")):
-            if cand not in names:
-                names.append(cand)
+        if (cand.startswith(("工商信息-", "司法风险-", "经营风险-", "知识产权-",
+                             "企业发展-", "上市信息-", "历史信息-", "人员风险-"))
+                and cand not in names):
+            names.append(cand)
     return names
 
 

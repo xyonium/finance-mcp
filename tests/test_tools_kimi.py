@@ -147,8 +147,8 @@ async def test_company_risk_cn_resolves_full_name_first(monkeypatch):
     search_call = responses[0]
     assert search_call == ("tianyancha_company_search", {"search_keyword": "腾讯"})
     assert out["company"] == "深圳市腾讯计算机系统有限公司"
-    aspect_calls = dict((params["api_call_name"], params)
-                        for api, params in responses[1:])
+    aspect_calls = {params["api_call_name"]: params
+                    for api, params in responses[1:]}
     for aspect in ALL_ASPECTS:
         api_name = kimi_mod.ASPECT_APIS[aspect][0]
         assert out["aspects"][aspect]["data_preview"] == f"{api_name} rows"
