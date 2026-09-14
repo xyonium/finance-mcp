@@ -131,11 +131,16 @@ World Bank and IMF sub-endpoints are **keyless** (always on). FRED unlocks
 monthly-frequency US series (CPI index, fed funds, 10Y yield, payrolls,
 retail sales) when configured.
 
+Two surfaces share the key: `get_economic_data` covers the 8 canonical
+indicators with keyless World Bank/IMF fallbacks; `get_fred_series` /
+`search_fred_series` expose **any** of the 800k+ FRED series by raw
+series_id (no fallbacks — FRED only, e.g. `get_fred_series("DEXJPUS")`).
+
 Free API key (5-minute registration): <https://fredaccount.stlouisfed.org/apikeys>
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `FRED_API_KEY` | FRED API key (optional; without it macro falls back to keyless World Bank/IMF) | — |
+| `FRED_API_KEY` | FRED API key (optional; without it macro falls back to keyless World Bank/IMF, and the `*fred*` tools stay off) | — |
 | `WORLD_BANK_BASE_URL` / `IMF_BASE_URL` / `FRED_BASE_URL` | Endpoint overrides (mirror/rotator-friendly) | official hosts |
 | `SEC_EDGAR_BASE_URL` / `ECB_BASE_URL` / `OECD_BASE_URL` / `EUROSTAT_BASE_URL` | Reserved for tombstoned follow-up providers (SDMX/XBRL; not yet wired) | official hosts |
 
@@ -161,6 +166,16 @@ Exactly one way needs to be configured for the kimi tools to activate.
 | `KIMI_ACCESS_TOKEN` | **Fallback (direct).** A Kimi Code token used directly against `KIMI_BASE_URL`, with no refresh logic. *With `KIMI_PROXY_URL` set:* doubles as the proxy's management key (see above). | — |
 | `KIMI_BASE_URL` | Upstream endpoint used with the two fallback paths | `https://api.kimi.com/coding/v1/tools` |
 | `KIMI_FILES_DIR` | Where datasource result files are written | `/tmp/unified_finance_mcp` |
+
+Source-level discipline (adjudicated in `docs/research/kimi-sources/`): ~30
+mirror-mode sources (world_bank, fred, pubmed, …) are **blocked** with a
+free-official-endpoint hint; wind/sp_data pass only their gap-class APIs;
+caixin traffic is **soft-routed at the `caixin_call_name` parameter** — the
+~60% of its 687 APIs with free equivalents (quotes/funds/macro/futures/…)
+are blocked pre-upstream (0 积分 spent) with an alternative hint, while the
+8 unique categories (insurance, executive history, environmental, private
+funds, bond-issuer financials, sentiment index, patents, bank regulatory
+ratios, industry-chain graphs) pass through.
 
 ### Futu OpenD (inherited from futu-opend-mcp)
 
@@ -282,6 +297,7 @@ also removes the Python ≥3.14 wrapper constraint mcpo hit).
 | `get_ownership` | Major / institutional / mutual-fund holders, insider transactions & summary |
 | `get_events_calendar` | Earnings, dividends, IPO calendar (date range optional) |
 | `get_economic_data` | Macro series: GDP, CPI, unemployment, rates, treasury yields, … |
+| `get_fred_series` / `search_fred_series` | Any FRED series by raw series_id + series search (needs `FRED_API_KEY`) |
 | `search_symbols` | Search symbols by company name or ticker |
 | `get_symbol_intel` | Per-symbol indicator queries by `kind`: `options` (chain at one `expiration`, calls/puts IV/OI) · `short` (shares short, days-to-cover, % of float) · `analyst` (estimates, price targets, recommendations) · `dividends` (history + next dates) · `earnings` (EPS est. vs reported + surprise %, `limit` rows) |
 | `get_company_risk_cn` | CN company risk profile from tianyancha (via kimi) |

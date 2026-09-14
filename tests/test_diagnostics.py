@@ -105,7 +105,7 @@ async def test_all_providers_reported(monkeypatch):
     out = await _register()()
     assert set(out["providers"]) == {"yahoo", "tradingview", "fmp", "alphavantage",
                                      "marketaux", "futu", "eastmoney", "kimi",
-                                     "macro", "cex"}
+                                     "macro", "cex", "fred"}
 
 
 async def test_cex_provider_reported(monkeypatch):
@@ -317,8 +317,8 @@ def test_module_registered_and_mounts_tool():
     from mcp.server.fastmcp import FastMCP
 
     assert "diagnostics" in tools_pkg.ALL_MODULES
-    assert len(tools_pkg.ALL_MODULES) == 17
-    assert len(set(tools_pkg.ALL_MODULES)) == 17  # no duplicates
+    assert len(tools_pkg.ALL_MODULES) == 18
+    assert len(set(tools_pkg.ALL_MODULES)) == 18  # no duplicates
 
     mcp = FastMCP("t16-test")
     diagnostics.register(mcp, None, get_settings())
