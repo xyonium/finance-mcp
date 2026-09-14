@@ -58,6 +58,7 @@ from ..http import PoliteClient
 from .base import Provider
 
 __all__ = [
+    "CAIXIN_KEPT_NAME_KEYWORDS",
     "DEFAULT_KIMI_BASE_URL",
     "DISCOURAGED_SOURCES",
     "KNOWN_SOURCES",
@@ -115,8 +116,11 @@ DISCOURAGED_SOURCES: dict[str, str] = {
 }
 
 # KEEP list (R4/R7/R10/R15-caixin): these sources are NOT downgraded.
-# caixin stays entire — its 687-API single-endpoint architecture makes
-# per-API prefix whitelisting mechanically inapplicable (see R15 verdict).
+# caixin stays — but NOT entire any more: the R19 task-③ param-level soft
+# router (CAIXIN_KEPT_NAME_KEYWORDS below) blocks the ~60% free-replaceable
+# categories at the caixin_call_name parameter, the level the R15 verdict
+# §2 correctly identified as the only place a gate can exist (all 687 APIs
+# ride the single caixin_api_call api name).
 # tianyancha / gildata / yuandian_law stay via zero free-equal evidence.
 
 # Per-source allowed API prefixes. Empty/absent entry = unrestricted.
@@ -160,6 +164,53 @@ SOURCE_ALLOWED_API_PREFIXES: dict[str, tuple[str, ...]] = {
         "sp_get_transactions_relationships", # 交易关系图谱
     ),
 }
+
+# ── caixin param-level soft router (R19, task ③) ────────────────────────────
+# caixin's 687 APIs all ride the single `caixin_api_call` api name; the real
+# API is selected by the `caixin_call_name` PARAM (Chinese name, exact-match
+# from caixin_api_search results). Gate 2 (name prefixes) therefore cannot
+# see caixin traffic — the filter has to live one level down, on the param.
+#
+# Kept surface = the 8 categories the caixin verdict adjudicated 不可替
+# (~200 of 687 APIs, docs/research/kimi-sources/caixin.verdict.md §1-2):
+#   保险库 / 人物库(履历·学历时序) / 环保(排污·整改) / 私募基金库 /
+#   债券发行人财务 / 舆情(敏感指数) / 专利 / 银行监管指标 /
+#   产业全景图谱, plus the 公用库/企业清单 dimension tables those APIs
+#   depend on. The describe dump lists no per-category names, so matching is
+#   by keyword on the Chinese api name — deliberately permissive (a false
+#   positive merely keeps a replaceable API reachable; a false negative
+#   would block a genuinely unique one).
+CAIXIN_KEPT_NAME_KEYWORDS: tuple[str, ...] = (
+    # 保险库 (51): 偿付能力/认可资产负债/充足率/流动性监管指标
+    "保险", "偿付", "寿险", "财险",
+    # 人物库 (20): 高管工作经历明细 + 教育背景明细
+    "高管", "履历", "人物", "教育背景", "工作经历",
+    # 环保 (20): 排污许可证 + 整改通知书
+    "排污", "环保", "整改", "环境",
+    # 私募基金库 (15)
+    "私募",
+    # 债券发行人财务 (14): 非上市发行人三大表
+    "发行人",
+    # 舆情 (10): 敏感舆情指数 + 新闻热榜
+    "舆情",
+    # 专利 (8): 绿色专利/技术分支四级分类
+    "专利",
+    # 银行库监管指标部分 (22 中留): 商业银行主要监管指标(分机构类)
+    "监管指标",
+    # 产业全景图谱 (5): 主题代码表→节点关系→关联公司
+    "产业链", "产业全景", "图谱",
+    # 公用库 (12) / 企业清单 (6): 代码表/日历等依附维表
+    "代码表", "日历", "清单",
+)
+
+CAIXIN_SOFT_ROUTE_HINT = (
+    "caixin 软路由（积分纪律）：'{name}' 不在保留面"
+    "（保险/人物履历/环保排污/私募/债券发行人/舆情/专利/银行监管指标/"
+    "产业链图谱/公用清单）内。行情·基金·宏观·期货·指数·货币市场走免费侧"
+    "（akshare/统计局/本仓 yahoo·futu·eastmoney），机构工商司法走 "
+    "tianyancha，研报走 gildata，债券估值走 wind 白名单 API。确属保留面"
+    "却被拦 = 关键词表缺口（CAIXIN_KEPT_NAME_KEYWORDS），请补充关键词。"
+)
 
 _DESC_CACHE: dict[str, tuple[float, str]] = {}
 _DESC_TTL = 24 * 3600
@@ -511,6 +562,17 @@ class KimiProvider(Provider):
             raise NotFound(
                 f"kimi: {source}/{api} not in allowed api prefixes "
                 f"({len(allowed)} prefix(es); see SOURCE_ALLOWED_API_PREFIXES)")
+        # R19 gate 3: caixin param-level soft routing. All 687 caixin APIs
+        # ride caixin_api_call, so the prefix gate cannot see them; filter on
+        # the caixin_call_name param instead. caixin_api_search stays open
+        # (metadata discovery costs no 积分). Blocked traffic never reaches
+        # upstream — zero score spent on free-replaceable categories.
+        if source == "caixin" and api == "caixin_api_call":
+            name = str((params or {}).get("caixin_call_name") or "")
+            if not name or not any(k in name
+                                   for k in CAIXIN_KEPT_NAME_KEYWORDS):
+                raise NotFound("kimi: " + CAIXIN_SOFT_ROUTE_HINT.format(
+                    name=name or "(missing caixin_call_name)"))
         merged = dict(params or {})
         if not merged.get("file_path"):
             merged["file_path"] = (f"{self.settings.kimi_files_dir}/"

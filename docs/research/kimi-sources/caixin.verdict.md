@@ -62,9 +62,10 @@
 3. **积分纪律**：多数接口 score=20/次、单次 5 条，翻页按 pageNum 递增逐条扣 —— 调用前先 `caixin_api_search` 确认 score 与 is_free，能用免费接口（如产业链主题代码表 score=0）优先；避免无界翻页。
 4. **产业链白名单**：induChaiName/induChaiUniCode 参数必须命中 20 个试用主题（固态电池/半导体/光伏/华为昇腾等，见 describe doc 第 59 行）；先调"主题代码表"拿编码可减少精确匹配失败。
 
-## 4. 后续（非本任务范围）
+## 4. 后续（均已落地，2026-09-14）
 
-- 修 `_extract_call_result` 对 caixin search 的 assistant 通道嵌套 `is_success` 回退解析（本裁决 §0.3，预计 ~10 行）。
+- ~~修 `_extract_call_result` 对 caixin search 的 assistant 通道嵌套 `is_success` 回退解析~~ → **已修（B4）**：`_extract_call_result` 现在先 `html.unescape` 再解析，user 通道退化为 `{"data_preview": null}` 时回退 assistant 通道、字符串型 `is_success` 键即载荷。测试：`test_call_b4_tianyancha_api_search_degenerate_user_channel`。
+- ~~参数级软路由~~ → **已落地（R19 gate 3）**：`KimiProvider.call()` 对 `caixin_api_call` 按 `caixin_call_name` 参数做关键词软路由（`CAIXIN_KEPT_NAME_KEYWORDS`，覆盖 §1 的 8 个保留整类 + 公用/清单依附项），摘档类别在上游调用前拦截（0 积分消耗），拦截提示给出免费替代路径。
 - 落 akshare provider 后，§1 表中"等质"档的兜底价值进一步归零，但独有 8 类不受影响——本裁决无需复审。
 
 ## 5. 证据

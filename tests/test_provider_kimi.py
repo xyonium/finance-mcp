@@ -388,6 +388,123 @@ async def test_call_b4_boolean_is_success_not_mistaken_for_payload(monkeypatch):
     assert out["data_preview"] == nested
 
 
+# ── R19 gate 3: caixin param-level soft routing ─────────────────────────────
+
+import contextlib
+
+
+@contextlib.contextmanager
+def _verified_caixin():
+    """Pre-verify caixin (bypass the _resolve_source describe probe) so calls
+    reach the gate directly; restore the registry afterwards."""
+    from unified_finance_mcp.providers import kimi as kimi_mod
+    kimi_mod._VERIFIED_SOURCES.add("caixin")
+    try:
+        yield
+    finally:
+        kimi_mod._VERIFIED_SOURCES.discard("caixin")
+
+
+@respx.mock
+async def test_caixin_call_kept_category_passes_gate(monkeypatch):
+    """保险 (kept category): keyword match on the Chinese api name lets the
+    call through to upstream."""
+    with _verified_caixin():
+        route = respx.post(DEFAULT_KIMI_BASE_URL).respond(200, json=_ok("ok"))
+        p = make_provider(monkeypatch)
+        out = await p.call("caixin", "caixin_api_call", {
+            "caixin_call_name": "保险公司偿付能力充足率",
+            "caixin_call_param": {"pageNum": "1"}})
+    assert "data_preview" in out
+    assert route.called
+
+
+@respx.mock
+async def test_caixin_call_industry_chain_free_api_passes(monkeypatch):
+    """The live-verified score=0 API '上市公司产业链主题代码表-通用' must pass
+    (both 产业链 and 代码表 keywords match)."""
+    with _verified_caixin():
+        route = respx.post(DEFAULT_KIMI_BASE_URL).respond(200, json=_ok("ok"))
+        p = make_provider(monkeypatch)
+        await p.call("caixin", "caixin_api_call", {
+            "caixin_call_name": "上市公司产业链主题代码表-通用",
+            "caixin_call_param": {}})
+    assert route.called
+
+
+@respx.mock
+async def test_caixin_call_replaceable_category_blocked_pre_upstream(monkeypatch):
+    """公募基金 is a 摘-category (akshare-covered): blocked BEFORE upstream —
+    zero 积分 spent — with the free-alternative hint."""
+    with _verified_caixin():
+        route = respx.post(DEFAULT_KIMI_BASE_URL).respond(200, json=_ok("ok"))
+        p = make_provider(monkeypatch)
+        with pytest.raises(NotFound) as ei:
+            await p.call("caixin", "caixin_api_call", {
+                "caixin_call_name": "基金基本信息",
+                "caixin_call_param": {}})
+    assert not route.called  # the whole point: no upstream traffic
+    msg = str(ei.value)
+    assert "软路由" in msg and "akshare" in msg and "tianyancha" in msg
+
+
+@respx.mock
+async def test_caixin_call_missing_call_name_blocked(monkeypatch):
+    with _verified_caixin():
+        route = respx.post(DEFAULT_KIMI_BASE_URL).respond(200, json=_ok("ok"))
+        p = make_provider(monkeypatch)
+        with pytest.raises(NotFound, match="caixin_call_name"):
+            await p.call("caixin", "caixin_api_call",
+                         {"caixin_call_param": {}})
+    assert not route.called
+
+
+@respx.mock
+async def test_caixin_search_stays_open(monkeypatch):
+    """caixin_api_search is metadata discovery (score=0): NOT gated."""
+    with _verified_caixin():
+        route = respx.post(DEFAULT_KIMI_BASE_URL).respond(200, json=_ok("ok"))
+        p = make_provider(monkeypatch)
+        out = await p.call("caixin", "caixin_api_search", {"query": "基金净值"})
+    assert "data_preview" in out
+    assert route.called
+
+
+@respx.mock
+async def test_caixin_gate_does_not_touch_other_sources(monkeypatch):
+    """tianyancha_api_call has the same api_call_name-param shape but is a
+    different source: the caixin gate must not fire."""
+    route = respx.post(DEFAULT_KIMI_BASE_URL).respond(200, json=_ok("ok"))
+    p = make_provider(monkeypatch)
+    out = await p.call("tianyancha", "tianyancha_api_call",
+                       {"api_call_name": "工商信息-企业股东",
+                        "api_call_params": {"keyword": "腾讯"}})
+    assert "data_preview" in out
+    assert route.called
+
+
+@respx.mock
+async def test_caixin_gate_keyword_table_is_complete_for_kept_categories(
+        monkeypatch):
+    """Every kept category from the verdict has at least one matching keyword
+    — guards against dropping a category keyword during a future edit."""
+    from unified_finance_mcp.providers.kimi import CAIXIN_KEPT_NAME_KEYWORDS
+    probes = {
+        "保险": "保险公司偿付能力充足率",
+        "人物": "基金公司高管工作经历明细",
+        "环保": "全国排污许可证信息",
+        "私募": "私募基金基本信息",
+        "债券发行人": "债券发行人资产负债表",
+        "舆情": "敏感舆情指数",
+        "专利": "绿色专利信息",
+        "银行监管指标": "商业银行主要监管指标",
+        "产业全景": "上市公司产业链主题代码表-通用",
+        "公用/清单": "证券交易日历",
+    }
+    for category, sample_name in probes.items():
+        assert any(k in sample_name for k in CAIXIN_KEPT_NAME_KEYWORDS), \
+            f"kept category {category} has no matching keyword"
+
 
 @respx.mock
 async def test_self_refresh_write_back_is_atomic(monkeypatch, tmp_path):
