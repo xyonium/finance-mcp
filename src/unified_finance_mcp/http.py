@@ -17,8 +17,11 @@ _MAX_RETRY_AFTER = 10.0
 
 class PoliteClient:
     def __init__(self, timeout: float = 20.0, max_retries: int = 3,
-                 min_host_delay: float = 0.5):
-        self._client = httpx.AsyncClient(timeout=timeout, headers={"User-Agent": UA})
+                 min_host_delay: float = 0.5, proxy: str | None = None):
+        # `proxy` is per-client on purpose: only the hosts that refuse this
+        # deployment's default egress (e.g. BLS) should go through it.
+        self._client = httpx.AsyncClient(timeout=timeout, headers={"User-Agent": UA},
+                                         proxy=proxy or None)
         self._max_retries = max_retries
         self._min_gap = min_host_delay
         self._last: dict[str, float] = {}

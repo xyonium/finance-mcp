@@ -72,3 +72,26 @@
 - FRED 停服或 key 政策变化。
 
 **给未来的提示**：任何"免费 key 源"的立项都先跑一遍 `curl` 可达性，再写 provider——`docs/CREDENTIALS.md` 第 2 级表格里的配额数字，只有在网络可达时才有意义。
+
+### 更正（2026-11-18 晚）：BLS 用 Jina Reader 回补
+
+上面的"BLS 不可接"只对**直连**成立。`r.jina.ai` 的出口不在 Akamai 的黑名单里，且支持 `X-Return-Format: text` 直接返回 BLS 原始 JSON（实测 5/5 成功、1–5 秒）。BLS 还有 **GET** 形式：`/publicAPI/v1/timeseries/data/{seriesId}`（单序列、免 key）。
+
+因此 BLS 以**月度备份腿**并入 `get_economic_data`（不新增工具、不新增 provider、不需要用户申请 key）：
+
+- CPI → `CUUR0000SA0`；UNEMPLOYMENT → `LNS14000000`；NONFARM_PAYROLL → `CES0000000001`
+- 顺序：FRED → BLS → World Bank（月度优先于年度）
+- reader 免 key ~20 RPM；`JINA_API_KEY` 可选（500 RPM）；`JINA_READER_URL=` 可停用
+- 仍不做：Census（需 key + 社科向）、BEA（区域/行业，价值低）、ECB/Eurostat/OECD/MTS
+
+这也修正了"没有住宅代理就没法接 BLS"的结论——**第三方 reader 是可行出口**，代价是多一个第三方依赖。
+
+### 再更正（同日）：US 代理比 reader 更好，且"出口"要按服务进程测
+
+上面"伦敦出口被 403"只对**直连**成立，但一开始把 `api.ipify.org` 的默认出口当成了所有域名/所有进程的出口，这是错的：
+
+- host shell 和 mcpo 容器里都**没有** proxy 环境变量（`env | grep -i proxy` 为空），所以服务确实是直连；
+- 用户提供的 US 代理 `192.168.254.253:1087`（出口 Phoenix `129.146.247.77`，同为 Oracle）访问 BLS **200 拿真实数据**，Census 也不再 403（302）。
+- 结论：Akamai 拦的是**具体 IP/区域**，不是整个 ASN。于是 BLS 改成 **proxy 优先、reader 兜底**：`BLS_PROXY_URL` 设置后走直连+代理，失败再回退 `r.jina.ai`。
+
+**教训**：判断"某源被墙"必须用**服务进程自己的网络环境**（容器 env、进程 env）做 direct vs proxy 对照，不能拿 host 默认出口的 IP 推断；用户说"按域名分流"时，分流可能只在别处生效。

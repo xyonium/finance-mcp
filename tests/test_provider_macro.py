@@ -5,6 +5,8 @@ www.imf.org, api.stlouisfed.org); no test may touch any of them. Every
 request target is pinned via the settings base-url defaults, and the FRED
 key (when exercised) is "test-key" so the leak assertions are meaningful.
 """
+import json
+
 import pytest
 import respx
 
@@ -22,12 +24,18 @@ FRED = f"{DEFAULT_FRED_BASE_URL}/series/observations"
 IMF = "https://www.imf.org/external/datamapper/api/v1"
 
 
-def make_provider(monkeypatch, fred_key=None):
+def make_provider(monkeypatch, fred_key=None, bls_proxy=None):
     monkeypatch.setenv("FINANCE_MCP_MIN_HOST_DELAY", "0")
     monkeypatch.delenv("FRED_API_KEY", raising=False)
     if fred_key:
         monkeypatch.setenv("FRED_API_KEY", fred_key)
     monkeypatch.delenv("WORLD_BANK_BASE_URL", raising=False)
+    monkeypatch.delenv("JINA_READER_URL", raising=False)
+    monkeypatch.delenv("JINA_API_KEY", raising=False)
+    monkeypatch.delenv("BLS_BASE_URL", raising=False)
+    monkeypatch.delenv("BLS_PROXY_URL", raising=False)
+    if bls_proxy:
+        monkeypatch.setenv("BLS_PROXY_URL", bls_proxy)
     monkeypatch.delenv("IMF_BASE_URL", raising=False)
     monkeypatch.delenv("FRED_BASE_URL", raising=False)
     return MacroProvider(get_settings())
@@ -239,7 +247,7 @@ async def test_indicator_map_covers_canonical_vocabulary():
     # every indicator has at least one candidate, and fred-first where present
     for candidates in MACRO_INDICATORS.values():
         assert candidates
-        assert all(src in ("fred", "world_bank", "imf")
+        assert all(src in ("fred", "bls", "world_bank", "imf")
                    for src, _ in candidates)
 
 
@@ -326,3 +334,108 @@ async def test_economic_drift_survives_a_later_not_found(monkeypatch):
     p = make_provider(monkeypatch, fred_key="test-key")
     with pytest.raises(UpstreamDrift):
         await p.economic("GDP")
+
+
+# ── bls via jina reader (keyless backup for CPI/UNRATE/PAYEMS) ──────────────
+
+BLS_UNRATE_URL = ("https://r.jina.ai/https://api.bls.gov/publicAPI/v1"
+                  "/timeseries/data/LNS14000000")
+
+BLS_BODY = {
+    "status": "REQUEST_SUCCEEDED", "responseTime": 21, "message": [],
+    "Results": {"series": [{"seriesID": "LNS14000000", "data": [
+        {"year": "2026", "period": "M10", "periodName": "October",
+         "value": "4.1", "footnotes": [{}]},
+        {"year": "2026", "period": "M13", "periodName": "Annual",
+         "value": "4.2"},  # M13 is BLS's annual average: not a month
+        {"year": "2026", "period": "M09", "periodName": "September",
+         "value": "4.2"},
+    ]}]}}
+
+
+@respx.mock
+async def test_bls_via_reader_parses_months_and_drops_annual_average(monkeypatch):
+    respx.get(BLS_UNRATE_URL).respond(200, text=json.dumps(BLS_BODY))
+    p = make_provider(monkeypatch)
+    rows = await p._bls("LNS14000000")
+    assert rows == [{"date": "2026-10", "value": 4.1},
+                    {"date": "2026-09", "value": 4.2}]
+    req = respx.calls[0].request
+    assert req.headers["x-return-format"] == "text"
+
+
+@respx.mock
+async def test_bls_is_the_backup_when_fred_has_no_key(monkeypatch):
+    """No FRED key: the monthly BLS leg beats the annual World Bank one."""
+    respx.get(BLS_UNRATE_URL).respond(200, text=json.dumps(BLS_BODY))
+    route_wb = respx.get(f"{WB}/SL.UEM.TOTL.ZS").respond(200, json=wb_body([]))
+    p = make_provider(monkeypatch)  # no FRED_API_KEY
+    rows = await p.economic("UNEMPLOYMENT")
+    assert rows[0] == {"date": "2026-10", "value": 4.1}
+    assert not route_wb.called
+
+
+@respx.mock
+async def test_bls_reader_failure_falls_through_to_world_bank(monkeypatch):
+    respx.get(BLS_UNRATE_URL).respond(422, text='{"data":null}')
+    respx.get(f"{WB}/SL.UEM.TOTL.ZS").respond(200, json=wb_body([
+        {"indicator": {"id": "SL.UEM.TOTL.ZS"}, "country": {"id": "1W"},
+         "countryiso3code": "WLD", "date": "2024", "value": 5.0}]))
+    p = make_provider(monkeypatch)
+    rows = await p.economic("UNEMPLOYMENT")
+    assert rows == [{"date": "2024", "value": 5.0, "country": "WLD",
+                     "indicator": "SL.UEM.TOTL.ZS"}]
+
+
+@respx.mock
+async def test_bls_daily_threshold_maps_to_rate_limited(monkeypatch):
+    respx.get(BLS_UNRATE_URL).respond(200, text=json.dumps({
+        "status": "REQUEST_NOT_PROCESSED",
+        "message": ["Request exceeds the daily threshold"],
+        "Results": {}}))
+    p = make_provider(monkeypatch)
+    with pytest.raises(Exception) as ei:
+        await p._bls("LNS14000000")
+    assert "threshold" in str(ei.value)
+
+
+@respx.mock
+async def test_bls_non_json_reader_body_is_drift(monkeypatch):
+    respx.get(BLS_UNRATE_URL).respond(200, text="<html>reader error</html>")
+    p = make_provider(monkeypatch)
+    with pytest.raises(UpstreamDrift):
+        await p._bls("LNS14000000")
+
+
+@respx.mock
+async def test_bls_http_parses_direct_json(monkeypatch):
+    """The direct path (used when a US proxy is configured) parses the same
+    body as the reader path; proxy wiring itself is not exercised here."""
+    respx.get("https://api.bls.gov/publicAPI/v1/timeseries/data/LNS14000000").respond(
+        200, json=BLS_BODY)
+    p = make_provider(monkeypatch)
+    rows = await p._bls_http("LNS14000000")
+    assert rows == [{"date": "2026-10", "value": 4.1},
+                    {"date": "2026-09", "value": 4.2}]
+
+
+@respx.mock
+async def test_bls_prefers_proxy_when_configured(monkeypatch):
+    p = make_provider(monkeypatch, bls_proxy="http://127.0.0.1:1087")
+    from unittest.mock import AsyncMock
+    p._bls_http = AsyncMock(return_value=[{"date": "2026-10", "value": 4.1}])
+    rows = await p._bls("LNS14000000")
+    assert rows == [{"date": "2026-10", "value": 4.1}]
+    p._bls_http.assert_awaited_once_with("LNS14000000")
+
+
+@respx.mock
+async def test_bls_proxy_failure_falls_back_to_reader(monkeypatch):
+    """A dead/refused proxy must not kill the backup: the reader still serves."""
+    from unittest.mock import AsyncMock
+    respx.get(BLS_UNRATE_URL).respond(200, text=json.dumps(BLS_BODY))
+    p = make_provider(monkeypatch, bls_proxy="http://127.0.0.1:1087")
+    p._bls_http = AsyncMock(side_effect=UpstreamError("proxy refused"))
+    rows = await p._bls("LNS14000000")
+    assert rows[0] == {"date": "2026-10", "value": 4.1}
+    assert respx.calls  # the reader was actually used

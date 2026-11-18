@@ -9,4 +9,4 @@
 - [futu wrapper kwarg 映射](futu-wrapper-kwarg-mapping.md) — wrapper kwargs 必须等于脚本主函数形参名，否则恒炸
 - [cliproxy-kimi-tools 归属](cliproxy-kimi-tools-ownership.md) — 是用户自己的 Go 插件，透明转发，改它零协调成本
 - [从 Claude Code 迁到 DSH](dsh-migration.md) — 迁了什么、为什么、以后别引入 `.claude/` 依赖
-- [2026-11-18 K-Dense 缺口源裁决](kdense-source-intake.md) — EDGAR / World Bank 透传 / Treasury 曲线入库；ECB、BEA/BLS/Census 暂缓及理由
+- [2026-11-18 K-Dense 缺口源裁决](kdense-source-intake.md) — EDGAR / World Bank 透传 / Treasury 曲线入库；BLS 经 Jina Reader 作月度备份；Census、BEA、ECB 等暂缓及理由

@@ -12,7 +12,7 @@
 | `scientific-data-mcp` | 化合物 / 活性 / 蛋白 / 结构 / 文献元数据 | 金融行情 |
 | `paper-search` | 找论文 / 读论文 / RAG 入库 | 金融数据 |
 
-K-Dense `database-lookup` 的域归属：经济/金融/监管/社科 14 源归本仓库或 paper-search；本轮只接 SEC EDGAR + World Bank 透传 + US Treasury（见 `docs/memory/kdense-source-intake.md`）。
+K-Dense `database-lookup` 的域归属：经济/金融/监管/社科 14 源归本仓库或 paper-search；本轮接 SEC EDGAR + World Bank 透传 + US Treasury，并用 Jina Reader 给 BLS 加月度备份（见 `docs/memory/kdense-source-intake.md`）。
 
 ## 命令
 
@@ -34,7 +34,7 @@ live smoke 不进 CI：手工跑，且每个会话最多 1-2 次真实调用（�
 
 - `providers/<source>.py`：URL 构造、分页、字段归一化、错误映射。`tools/<domain>.py`：LLM-facing schema、参数校验、错误包装。
 - **两层边界**：provider 抛 `errors.py` 的分类异常；tool 用 `route_and_call` 包住，**永不抛异常**，失败返回 `{"error": ...}`（单源失败折叠进 `source_errors`）。`CancelledError` 不捕。
-- **错误分级**：`AuthError`（key/UA 配置）、`NotFound`（正常"无此数据"）、`RateLimited`/`UpstreamError`（可重试的连接/上游故障）、`UpstreamDrift`（**上游结构漂移**：非 JSON、字段缺失、CSV 头变化、分页行为变了）。结构性异常一律用 `UpstreamDrift`——`route_and_call` 会给 error dict 附 `action="contact_admin"` + `hint`，要求模型转告用户联系管理员；不要把它降级成普通 `UpstreamError`，否则模型会以为重试就能好。
+- **错误分级**：`AuthError`（key/UA 配置）、`NotFound`（正常"无此数据"）、`RateLimited`/`UpstreamError`（可重试的连接/上游故障）、`UpstreamDrift`（**上游结构漂移**：解析成功但字段缺失/类型变了/CSV 头变化/分页行为变了；注意 200 + 非 JSON 仍算 `UpstreamError`，因为那多半是网关/维护页）。结构性异常一律用 `UpstreamDrift`——`route_and_call` 会给 error dict 附 `action="contact_admin"` + `hint`，要求模型转告用户联系管理员；不要把它降级成普通 `UpstreamError`，否则模型会以为重试就能好。
 - HTTP 一律走 `http.PoliteClient`：per-host 限速（`FINANCE_MCP_MIN_HOST_DELAY`，默认 0.5s）、429/503 重试 + `Retry-After`、401/403→`AuthError`、404→`NotFound`。需要自己读错误体时用 `get_response`/`get_text`。
 - **反幻觉**：只返回上游真实字段；缺失值保持 `None`/原样，不插值、不补全、不回填；日期保上游拼写。需要溯源的数据带上 `accn`/`filed`/`form`。
 - **不加载 `.env`**（无 dotenv 依赖）：key 只按需 `os.environ.get`；无 key 时 provider `available()` 为 False，auto 路由静默跳过；显式 `source=` 时返回"未配置"而不是假装空数据。
@@ -45,10 +45,11 @@ live smoke 不进 CI：手工跑，且每个会话最多 1-2 次真实调用（�
 
 ## 数据源与 key
 
-免 key：Yahoo、TradingView、Eastmoney、CEX 公共 REST、World Bank、IMF、US Treasury、**SEC EDGAR**（只要求声明 UA）。
+免 key：Yahoo、TradingView、Eastmoney、CEX 公共 REST、World Bank、IMF、US Treasury、**SEC EDGAR**（只要求声明 UA）、**BLS**（经 Jina Reader）。
 
 需 key（全部免费档）：`FRED_API_KEY`（120 req/min）、`FMP_API_KEY`、`ALPHAVANTAGE_API_KEY`（免费档约 25 次/日，自动化测试一律 mock）、`MARKETAUX_API_TOKEN`、Kimi（proxy / token / auth-file 三选一）。
 
+- **出口限制与 BLS 双通道**：默认出口（London）访问 `api.bls.gov`/`api.census.gov` 是 403，但**美国出口 200**（实测 Phoenix）。BLS 因此优先 `BLS_PROXY_URL`（只作用于 BLS 的 per-host 代理），没配代理时走 `r.jina.ai`（`X-Return-Format: text` 拿原始 JSON，免 key 约 20 RPM，`JINA_API_KEY` 可到 500 RPM，`JINA_READER_URL=` 可停用）。Census 仍需 key 且价值低，不接。**排查出口问题先看服务进程自己的 env/容器**，host 的按域名分流不等于服务进程在走。
 - **SEC EDGAR 的坑**：SEC 对"未声明 UA"返回 403 `Undeclared Automated Tool`。仓库共享 UA 含 `github.com`，**必被 403**（2026-11-18 实测）。EDGAR provider 因此自带 UA：`SEC_EDGAR_USER_AGENT`，默认 `unified-finance-mcp`；建议设成 `"unified-finance-mcp your@email"`。SEC 站点级上限 10 req/s，PoliteClient 的 0.5s 节奏 = 2 req/s。
 - `get_sec_filing` 用 `companyconcept`（2–50 KB/tag，随概念点数增长）而不是 `companyfacts`（AAPL 3.8 MB），**永远不要**把整包 companyfacts 返回给模型。
 - Treasury 曲线用 `home.treasury.gov` 的 CSV 导出（`_format=csv`），不是 XML feed；Fiscal Data 是另一个 host 的 JSON API。`monthly_treasury_statement` 端点已 404，正确入口是 `/v1/accounting/mts/mts_table_N`。

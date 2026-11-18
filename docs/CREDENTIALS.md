@@ -1,6 +1,6 @@
 # 配置与 API key 获取指南
 
-先说结论：**8 个数据源免 key，什么都不配也能用**（Yahoo、TradingView、Eastmoney、CEX 公共 REST、World Bank、IMF、US Treasury、SEC EDGAR）。剩下的 key 全部是免费档；没有付费才能用的能力。
+先说结论：**9 个数据源免 key，什么都不配也能用**（Yahoo、TradingView、Eastmoney、CEX 公共 REST、World Bank、IMF、US Treasury、SEC EDGAR、BLS）。剩下的 key 全部是免费档；没有付费才能用的能力。
 
 唯一"像 key 但不是 key"的门槛是 **SEC EDGAR 的声明式 User-Agent**：SEC 对未声明 UA 返回 403，共享 UA 里含 `github.com` 必被拦（2026-11-18 实测）。配一个环境变量即可。
 
@@ -37,7 +37,16 @@ export SEC_EDGAR_USER_AGENT="unified-finance-mcp your@email"
 
 ToS：this product uses the FRED® API but is not endorsed or certified by the Federal Reserve Bank of St. Louis.
 
-### 3. Kimi Datasource（三选一）
+### 3. BLS（US 代理优先 / Jina Reader 兜底，免 key）
+
+`api.bls.gov` 对**默认伦敦出口**返回 403，但**美国出口 200**（实测：`129.146.247.77` Phoenix）。BLS 是我们的 CPI / UNEMPLOYMENT / NONFARM_PAYROLL 月度备份（FRED 没配 key 时生效），两条免 key 通道：
+
+1. **推荐**：`BLS_PROXY_URL=http://<us-proxy>:<port>` —— 只给 BLS 走这个代理，其它 provider 不受影响。
+2. 没有代理时自动走 `r.jina.ai`（`JINA_READER_URL`，keyless ~20 RPM）。可选 `JINA_API_KEY`（<https://jina.ai/keys/>，免费月度配额）提到 500 RPM。
+
+两条都**不需要 BLS key**。注意 BLS keyless GET 是 v1 单序列接口，适合备份而非高频主路径；停用 reader 用 `JINA_READER_URL=`。
+
+### 4. Kimi Datasource（三选一）
 
 `KIMI_PROXY_URL`（推荐，CLIProxyAPI 插件注入凭据）→ `KIMI_ACCESS_TOKEN` → `KIMI_AUTH_FILE`。详见 README 的 Kimi 小节；`get_service_status` 会报 `auth.source`（只报结构，不报值）。
 
@@ -62,7 +71,7 @@ ToS：this product uses the FRED® API but is not endorsed or certified by the F
 | 源 | key | 免费额度 | 注册 |
 |---|---|---|---|
 | BEA | 36 位 UserID | 100 req/min、100 MB/min；429 + Retry-After | <https://apps.bea.gov/api/signup/>（禁止一次性邮箱） |
-| BLS API v2 | 邮件下发 key，需每年续期 | 500 查询/日、50 序列/查询、20 年/查询；50 req/10s | <https://data.bls.gov/registrationEngine/>（v1 无需 key 但只有 25 查询/日，生产不可用） |
+| ~~BLS API v2~~ | **已不需要**：CPI/UNRATE/PAYEMS 已用 Jina Reader 免 key 覆盖 | 仅 JOLTS/OES 细分仍缺（暂无计划） | — |
 | US Census | 必须（2026-05 起所有查询强制） | 单查询 ≤50 变量；每日数值配额现行文档未公布 | <https://www.census.gov/data/developers/api-key.html> |
 | Data Commons | 必须（v2 起强制） | 自助 key 免费、官方称无配额上限（未公布数值） | <https://apikeys.datacommons.org> |
 

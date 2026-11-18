@@ -41,7 +41,7 @@ model calls one tool, not four.
 **Data sources:** Yahoo Finance · TradingView · FMP · Alpha Vantage · marketaux ·
 Bitget / Gate / MEXC (USDT-settled perpetuals, public REST — OKX/Binance quotes
 via TradingView) · Futu OpenD · SEC EDGAR · US Treasury (par yield curve +
-Fiscal Data) · World Bank / IMF · Kimi Datasource (tianyancha CN company data,
+Fiscal Data) · World Bank / IMF · BLS (via Jina Reader) · Kimi Datasource (tianyancha CN company data,
 S&P Capital IQ, gildata screener data, and more).
 
 SEC EDGAR and the Treasury/Fiscal Data endpoints are **keyless**; SEC only
@@ -128,14 +128,22 @@ Free API token: <https://www.marketaux.com/register>
 | `MARKETAUX_API_TOKEN` | marketaux news API token | — |
 | `MARKETAUX_BASE_URL` | Endpoint override (rotator-friendly), e.g. `http://api-key-rotator:8788/marketaux` | `https://api.marketaux.com` |
 
-### Native macro (World Bank / IMF keyless + optional FRED)
+### Native macro (World Bank / IMF / BLS keyless + optional FRED)
 
-World Bank and IMF sub-endpoints are **keyless** (always on). FRED unlocks
-monthly-frequency US series (CPI index, fed funds, 10Y yield, payrolls,
-retail sales) when configured.
+World Bank, IMF and BLS sub-endpoints are **keyless** (always on). FRED
+unlocks monthly-frequency US series (CPI index, fed funds, 10Y yield,
+payrolls, retail sales) when configured.
 
-Two surfaces share the key: `get_economic_data` covers the 8 canonical
-indicators with keyless World Bank/IMF fallbacks; `get_fred_series` /
+BLS backs up **CPI / UNEMPLOYMENT / NONFARM_PAYROLL** with monthly data when
+`FRED_API_KEY` is absent. `api.bls.gov` answers 403 to the default (London)
+egress but 200 to a US egress, so two transports exist: set `BLS_PROXY_URL`
+(a US HTTP proxy) and BLS is fetched directly; without it, the Jina Reader
+(`r.jina.ai`, keyless ~20 RPM, `JINA_API_KEY` → 500 RPM) fetches the same
+keyless GET endpoint. Both need no BLS key. Set `JINA_READER_URL=` (empty) to
+disable the reader entirely.
+
+Two surfaces share the FRED key: `get_economic_data` covers the 8 canonical
+indicators with keyless World Bank/IMF/BLS fallbacks; `get_fred_series` /
 `search_fred_series` expose **any** of the 800k+ FRED series by raw
 series_id (no fallbacks — FRED only, e.g. `get_fred_series("DEXJPUS")`).
 
@@ -144,7 +152,10 @@ Free API key (5-minute registration): <https://fredaccount.stlouisfed.org/apikey
 | Variable | Purpose | Default |
 |---|---|---|
 | `FRED_API_KEY` | FRED API key (optional; without it macro falls back to keyless World Bank/IMF, and the `*fred*` tools stay off) | — |
-| `WORLD_BANK_BASE_URL` / `IMF_BASE_URL` / `FRED_BASE_URL` | Endpoint overrides (mirror/rotator-friendly) | official hosts |
+| `WORLD_BANK_BASE_URL` / `IMF_BASE_URL` / `FRED_BASE_URL` / `BLS_BASE_URL` | Endpoint overrides (mirror/rotator-friendly) | official hosts |
+| `BLS_PROXY_URL` | Per-host HTTP proxy for BLS only (a US egress passes Akamai; empty = use the reader) | — |
+| `JINA_READER_URL` | Reader used for BLS when no proxy is set (empty string disables it) | `https://r.jina.ai` |
+| `JINA_API_KEY` | Optional reader key: 20 RPM keyless → 500 RPM | — |
 | `ECB_BASE_URL` / `OECD_BASE_URL` / `EUROSTAT_BASE_URL` | Reserved for tombstoned SDMX follow-up providers (not wired) | official hosts |
 
 ### SEC EDGAR + US Treasury (keyless)

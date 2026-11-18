@@ -15,6 +15,11 @@ removed from kimi. This provider re-homes the useful ones as direct REST calls:
   covers all 8 canonical indicators. Skipped silently without FRED_API_KEY.
   ToS: this product uses the FRED® API but is not endorsed or certified by
   the Federal Reserve Bank of St. Louis.
+- **bls** (keyless, JSON): GET {base}/timeseries/data/{id} — monthly
+  CPI/UNRATE/PAYEMS backup for when FRED has no key. Direct api.bls.gov is
+  403 from this deployment's default (London) egress; a US egress passes, so
+  `BLS_PROXY_URL` is used when configured, with the Jina Reader
+  (src/unified_finance_mcp/jina.py) as the no-proxy fallback.
 - **imf** DataMapper (keyless, JSON): GET {base}/{indicator}/{area} — annual
   WEO series. Used as a supplement for GDP growth only; the canonical CPI/
   rate indicators have no DataMapper equivalent with matching semantics.
@@ -40,9 +45,20 @@ the upstream spelling (WB/FRED yearly "2025", monthly "2025-01").
 """
 from __future__ import annotations
 
+import json
+
 from ..config import Settings
-from ..errors import NotFound, ProviderError, RateLimited, UpstreamDrift, UpstreamError, scrub
+from ..errors import (
+    AuthError,
+    NotFound,
+    ProviderError,
+    RateLimited,
+    UpstreamDrift,
+    UpstreamError,
+    scrub,
+)
 from ..http import PoliteClient
+from ..jina import JinaReader
 from .base import Provider
 
 # canonical indicator -> (source, upstream code) candidates, in fallback
@@ -52,13 +68,16 @@ from .base import Provider
 MACRO_INDICATORS: dict[str, tuple[tuple[str, str], ...]] = {
     "GDP": (("fred", "GDP"), ("world_bank", "NY.GDP.MKTP.CD"),
             ("imf", "NGDP_RPCH")),
-    "CPI": (("fred", "CPIAUCSL"), ("world_bank", "FP.CPI.TOTL.ZG")),
-    "INFLATION": (("fred", "CPIAUCSL"), ("world_bank", "FP.CPI.TOTL.ZG")),
-    "UNEMPLOYMENT": (("fred", "UNRATE"), ("world_bank", "SL.UEM.TOTL.ZS")),
+    "CPI": (("fred", "CPIAUCSL"), ("bls", "CUUR0000SA0"),
+            ("world_bank", "FP.CPI.TOTL.ZG")),
+    "INFLATION": (("fred", "CPIAUCSL"), ("bls", "CUUR0000SA0"),
+                  ("world_bank", "FP.CPI.TOTL.ZG")),
+    "UNEMPLOYMENT": (("fred", "UNRATE"), ("bls", "LNS14000000"),
+                     ("world_bank", "SL.UEM.TOTL.ZS")),
     "FEDERAL_FUNDS_RATE": (("fred", "FEDFUNDS"),),
     "TREASURY_YIELD_10Y": (("fred", "DGS10"),),
     "RETAIL_SALES": (("fred", "RSAFS"),),
-    "NONFARM_PAYROLL": (("fred", "PAYEMS"),),
+    "NONFARM_PAYROLL": (("fred", "PAYEMS"), ("bls", "CES0000000001")),
 }
 
 # World Bank series have annual granularity: 1980:2026 keeps every WLD
@@ -115,11 +134,27 @@ class MacroProvider(Provider):
     def __init__(self, settings: Settings):
         super().__init__(settings)
         self._client: PoliteClient | None = None
+        self._reader: JinaReader | None = None
+        self._bls_client: PoliteClient | None = None
 
     def available(self) -> bool:
         # The keyless world_bank/imf sub-endpoints are always usable; fred is
         # simply skipped when FRED_API_KEY is unset.
         return True
+
+    def _bls_http_client(self) -> PoliteClient:
+        if self._bls_client is None:
+            self._bls_client = PoliteClient(
+                timeout=self.settings.request_timeout,
+                max_retries=self.settings.max_retries,
+                min_host_delay=self.settings.min_host_delay,
+                proxy=(self.settings.bls_proxy_url or "").strip() or None)
+        return self._bls_client
+
+    def _jina(self) -> JinaReader:
+        if self._reader is None:
+            self._reader = JinaReader(self.settings)
+        return self._reader
 
     def _get_client(self) -> PoliteClient:
         if self._client is None:
@@ -180,6 +215,73 @@ class MacroProvider(Provider):
     async def _world_bank(self, code: str) -> list[dict]:
         """Canonical-8 helper: the World aggregate, 1980-2026 window."""
         return await self.world_bank_series(code, _WB_COUNTRY, 1980, 2026)
+
+    # ── bls via jina reader (keyless; this egress is 403'd directly) ───────
+
+    @staticmethod
+    def _bls_rows(data: object, series_id: str) -> list[dict]:
+        """BLS body -> [{date, value}]. `M13` is BLS's annual average."""
+        if not isinstance(data, dict):
+            raise UpstreamDrift(f"macro/bls: unexpected "
+                                f"{type(data).__name__} body")
+        status = str(data.get("status") or "")
+        if status != "REQUEST_SUCCEEDED":
+            msg = "; ".join(str(m) for m in (data.get("message") or []))[:200]
+            low = msg.lower()
+            if "threshold" in low or "quer" in low or "limit" in low:
+                raise RateLimited(f"macro/bls: {msg}")
+            raise NotFound(f"macro/bls: {status} {msg}".strip())
+        series = (data.get("Results") or {}).get("series") or []
+        if not isinstance(series, list) or not series:
+            raise NotFound(f"macro/bls: no series for {series_id}")
+        rows = []
+        for point in series[0].get("data") or []:
+            if not isinstance(point, dict):
+                continue
+            year = str(point.get("year") or "")
+            period = str(point.get("period") or "")
+            if len(year) != 4 or not period.startswith("M") or period == "M13":
+                continue  # annual average / non-monthly rows are not a month
+            rows.append({"date": f"{year}-{period[1:].zfill(2)}",
+                         "value": _num(point.get("value"))})
+        if not rows:
+            raise NotFound(f"macro/bls: no monthly rows for {series_id}")
+        return rows
+
+    async def _bls_http(self, series_id: str) -> list[dict]:
+        """Direct BLS GET through BLS_PROXY_URL (a US egress passes Akamai)."""
+        url = (f"{self.settings.bls_base_url.rstrip('/')}"
+               f"/timeseries/data/{series_id}")
+        try:
+            data = await self._bls_http_client().get_json(url)
+        except UpstreamError as e:
+            raise UpstreamError(f"macro/bls: {e}") from e
+        except ValueError as e:
+            raise UpstreamError("macro/bls: non-JSON body") from e
+        return self._bls_rows(data, series_id)
+
+    async def _bls(self, series_id: str) -> list[dict]:
+        """BLS monthly series: proxy first when configured, else the reader.
+
+        Direct api.bls.gov is 403 from the default (London) egress but 200
+        from the US proxy; the Jina Reader keeps the backup working on hosts
+        that have no proxy at all. BLS also has a keyless GET surface
+        (`/publicAPI/v1/timeseries/data/{id}`), so neither path needs a key.
+        """
+        if (self.settings.bls_proxy_url or "").strip():
+            try:
+                return await self._bls_http(series_id)
+            except (AuthError, UpstreamError):
+                pass  # proxy down/refused: keep the backup alive via the reader
+        url = (f"{self.settings.bls_base_url.rstrip('/')}"
+               f"/timeseries/data/{series_id}")
+        text = await self._jina().read_text(url)
+        try:
+            data = json.loads(text)
+        except ValueError as e:
+            raise UpstreamDrift(f"macro/bls: non-JSON reader body for "
+                                f"{series_id}") from e
+        return self._bls_rows(data, series_id)
 
     # ── fred (free registration key) ───────────────────────────────────────
 
@@ -255,6 +357,7 @@ class MacroProvider(Provider):
         sub_sources = {
             "world_bank": self._world_bank,
             "fred": self._fred,
+            "bls": self._bls,
             "imf": self._imf,
         }
         last: Exception | None = None

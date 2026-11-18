@@ -64,6 +64,14 @@ DEFAULT_TREASURY_YIELD_CSV_URL = (
 # The shared http.UA cannot be reused: it contains github.com, which SEC
 # answers with 403 "Undeclared Automated Tool" (live, 2026-11-18).
 DEFAULT_SEC_EDGAR_USER_AGENT = "unified-finance-mcp"
+# Jina Reader: used only for hosts that 403 this egress (BLS/Census behind
+# Akamai). Keyless is ~20 RPM; JINA_API_KEY lifts it to 500 RPM.
+DEFAULT_JINA_READER_URL = "https://r.jina.ai"
+# BLS public API v1 GET (single series); v2 POST needs a key and is blocked
+# from this egress anyway, so the reader path uses the keyless GET form.
+DEFAULT_BLS_BASE_URL = "https://api.bls.gov/publicAPI/v1"
+# Optional per-host proxy for BLS: a US egress passes Akamai where the default
+# (London) egress is 403'd. Empty = use the Jina Reader fallback instead.
 
 
 @dataclass(frozen=True)
@@ -127,6 +135,12 @@ class Settings:
     treasury_yield_csv_url: str = field(
         default_factory=lambda: _env("TREASURY_YIELD_CSV_URL",
                                      DEFAULT_TREASURY_YIELD_CSV_URL))
+    jina_reader_url: str = field(
+        default_factory=lambda: _env("JINA_READER_URL", DEFAULT_JINA_READER_URL))
+    jina_api_key: str = field(default_factory=lambda: _env("JINA_API_KEY"))
+    bls_base_url: str = field(
+        default_factory=lambda: _env("BLS_BASE_URL", DEFAULT_BLS_BASE_URL))
+    bls_proxy_url: str = field(default_factory=lambda: _env("BLS_PROXY_URL"))
     ecb_base_url: str = field(
         default_factory=lambda: _env("ECB_BASE_URL", DEFAULT_ECB_BASE_URL))
     oecd_base_url: str = field(
