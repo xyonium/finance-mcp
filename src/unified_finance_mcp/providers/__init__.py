@@ -10,6 +10,7 @@ def build_providers(settings: Settings) -> dict[str, Provider]:
         alphavantage,
         cex,
         eastmoney,
+        edgar,
         fmp,
         fred,
         futu_bridge,
@@ -17,6 +18,7 @@ def build_providers(settings: Settings) -> dict[str, Provider]:
         macro,
         marketaux,
         tradingview,
+        treasury,
         yahoo,
     )
 
@@ -31,6 +33,8 @@ def build_providers(settings: Settings) -> dict[str, Provider]:
         kimi.KimiProvider(settings),
         macro.MacroProvider(settings),
         fred.FredProvider(settings),
+        edgar.EdgarProvider(settings),
+        treasury.TreasuryProvider(settings),
     ]
     if settings.cex_enabled:
         instances.append(cex.CexProvider(settings))

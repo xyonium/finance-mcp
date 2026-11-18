@@ -7,7 +7,7 @@ for dividends/ipo so route_and_call falls back naturally.
 """
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from ..errors import tool_error
 from ._routing import route_and_call
@@ -18,7 +18,9 @@ TYPES = ("earnings", "dividends", "ipo")
 
 
 def _default_window() -> tuple[str, str]:
-    today = date.today()  # noqa: DTZ011 - local calendar dates per T13 brief
+    # UTC date: the default window is +/-7 days, so a TZ shift is immaterial
+    # and UTC keeps the tool deterministic across deployments.
+    today = datetime.now(timezone.utc).date()
     return ((today - timedelta(days=7)).isoformat(),
             (today + timedelta(days=7)).isoformat())
 

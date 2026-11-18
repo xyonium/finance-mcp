@@ -61,7 +61,7 @@ def test_grouped_mount_build_mcp_shrinks_tool_surface():
     names = _registered_names(mcp)
     # 22 unified + 7 futu containers (6 primary + futu_reference) = 29;
     # no flat futu tool names.
-    assert len(names) == 29
+    assert len(names) == 30
     assert "futu_reference" in names and "futu_company" not in names
     assert not (names & ALL_FUTU)
     # unified surface untouched; get_snapshot absent (it is never a unified

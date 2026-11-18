@@ -95,7 +95,10 @@ async def test_status_shape(monkeypatch):
         assert isinstance(status["available"], bool), name
         assert isinstance(status["covers"], list), name
     assert out["futu_opend"]["reachable"] is True
-    assert out["tools"]["unified"] == 20  # exact pin: intel/cex 挂表后与 invariants 一致
+    # exact pin: must equal test_invariants' unified count. It did not
+    # before 2026-11-18 — "fred" was missing from UNIFIED_MODULES, so status
+    # under-reported 22 as 20; fixed together with the edgar row.
+    assert out["tools"]["unified"] == 23
     assert out["tools"]["futu_mounted"] >= 53
     assert out["tools"]["total"] == out["tools"]["unified"] + out["tools"]["futu_mounted"]
 
@@ -105,7 +108,7 @@ async def test_all_providers_reported(monkeypatch):
     out = await _register()()
     assert set(out["providers"]) == {"yahoo", "tradingview", "fmp", "alphavantage",
                                      "marketaux", "futu", "eastmoney", "kimi",
-                                     "macro", "cex", "fred"}
+                                     "macro", "cex", "fred", "edgar", "treasury"}
 
 
 async def test_cex_provider_reported(monkeypatch):
@@ -317,8 +320,8 @@ def test_module_registered_and_mounts_tool():
     from mcp.server.fastmcp import FastMCP
 
     assert "diagnostics" in tools_pkg.ALL_MODULES
-    assert len(tools_pkg.ALL_MODULES) == 18
-    assert len(set(tools_pkg.ALL_MODULES)) == 18  # no duplicates
+    assert len(tools_pkg.ALL_MODULES) == 19
+    assert len(set(tools_pkg.ALL_MODULES)) == 19  # no duplicates
 
     mcp = FastMCP("t16-test")
     diagnostics.register(mcp, None, get_settings())

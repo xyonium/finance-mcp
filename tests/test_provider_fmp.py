@@ -4,7 +4,7 @@ Endpoint paths are pinned to https://financialmodelingprep.com/developer/docs
 (stable). The `import httpx` from the plan's verbatim block was dropped: ruff
 F401 flags it as unused (deviation noted in the task report).
 """
-from datetime import date
+from datetime import datetime, timezone
 
 import pytest
 import respx
@@ -141,7 +141,7 @@ async def test_ownership_institutional_positions_summary(monkeypatch):
     rows = await p.ownership(parse_symbol("AAPL"), "institutional")
     assert rows[0]["investorsHolding"] == 4300
     params = respx.calls[0].request.url.params
-    today = date.today()  # noqa: DTZ011 - mirrors the provider's local-date convention
+    today = datetime.now(timezone.utc).date()  # mirrors the provider's UTC date
     assert params["year"] == str(today.year)
     assert params["quarter"] == str((today.month - 1) // 3 + 1)
 

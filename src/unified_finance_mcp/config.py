@@ -39,18 +39,31 @@ DEFAULT_KIMI_BASE_URL = "https://api.kimi.com/coding/v1/tools"
 DEFAULT_EASTMONEY_QUOTE_BASE_URL = "https://push2.eastmoney.com"
 DEFAULT_EASTMONEY_HISTORY_BASE_URL = "https://push2his.eastmoney.com"
 DEFAULT_EASTMONEY_SEARCH_BASE_URL = "https://searchapi.eastmoney.com"
-# Native macro provider sub-endpoint bases (R18). WB/IMF are keyless; FRED is
-# free-registration-keyed. EDGAR/ECB/OECD/EUROSTAT are declared for the
-# tombstoned follow-up providers (see providers/macro.py docstring) so their
-# env override surface already exists.
+# Official macro/fiscal bases. WB/IMF/EDGAR/Treasury are keyless; FRED is
+# free-registration-keyed. ECB/OECD/EUROSTAT stay declared for tombstoned SDMX
+# follow-ups (see providers/macro.py docstring) so their env override surface
+# already exists; EDGAR/Treasury are wired in providers/edgar.py and
+# providers/treasury.py.
 DEFAULT_WB_BASE_URL = "https://api.worldbank.org/v2"
 DEFAULT_IMF_BASE_URL = "https://www.imf.org/external/datamapper/api/v1"
 DEFAULT_FRED_BASE_URL = "https://api.stlouisfed.org/fred"
-DEFAULT_EDGAR_BASE_URL = "https://data.sec.gov/api/xbrl"
+DEFAULT_EDGAR_BASE_URL = "https://data.sec.gov"
+DEFAULT_SEC_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 DEFAULT_ECB_BASE_URL = "https://data-api.ecb.europa.eu/service"
 DEFAULT_OECD_BASE_URL = "https://sdmx.oecd.org/public/rest"
 DEFAULT_EUROSTAT_BASE_URL = (
     "https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0")
+# Treasury: two hosts, two shapes. The par yield curve is a CSV export on
+# home.treasury.gov; Fiscal Data is the documented JSON API.
+DEFAULT_TREASURY_FISCAL_BASE_URL = (
+    "https://api.fiscaldata.treasury.gov/services/api/fiscal_service")
+DEFAULT_TREASURY_YIELD_CSV_URL = (
+    "https://home.treasury.gov/resource-center/data-chart-center"
+    "/interest-rates/daily-treasury-rates.csv/all")
+# SEC's fair-access policy wants a declared user agent with a contact email.
+# The shared http.UA cannot be reused: it contains github.com, which SEC
+# answers with 403 "Undeclared Automated Tool" (live, 2026-11-18).
+DEFAULT_SEC_EDGAR_USER_AGENT = "unified-finance-mcp"
 
 
 @dataclass(frozen=True)
@@ -104,6 +117,16 @@ class Settings:
         default_factory=lambda: _env("FRED_BASE_URL", DEFAULT_FRED_BASE_URL))
     sec_edgar_base_url: str = field(
         default_factory=lambda: _env("SEC_EDGAR_BASE_URL", DEFAULT_EDGAR_BASE_URL))
+    sec_edgar_user_agent: str = field(
+        default_factory=lambda: _env("SEC_EDGAR_USER_AGENT", DEFAULT_SEC_EDGAR_USER_AGENT))
+    sec_edgar_tickers_url: str = field(
+        default_factory=lambda: _env("SEC_EDGAR_TICKERS_URL", DEFAULT_SEC_TICKERS_URL))
+    treasury_fiscal_base_url: str = field(
+        default_factory=lambda: _env("TREASURY_FISCAL_BASE_URL",
+                                     DEFAULT_TREASURY_FISCAL_BASE_URL))
+    treasury_yield_csv_url: str = field(
+        default_factory=lambda: _env("TREASURY_YIELD_CSV_URL",
+                                     DEFAULT_TREASURY_YIELD_CSV_URL))
     ecb_base_url: str = field(
         default_factory=lambda: _env("ECB_BASE_URL", DEFAULT_ECB_BASE_URL))
     oecd_base_url: str = field(

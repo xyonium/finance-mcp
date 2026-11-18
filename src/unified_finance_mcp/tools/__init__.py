@@ -6,4 +6,4 @@ ALL_MODULES: list[str] = ["quote", "history", "fundamentals", "news",
                           "macro", "search", "intel",
                           "futu_containers",
                           "containers", "backtest", "kimi", "diagnostics",
-                          "cex", "fred"]
+                          "cex", "fred", "edgar"]

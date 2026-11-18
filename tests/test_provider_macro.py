@@ -259,3 +259,48 @@ def test_registered_in_build_providers(monkeypatch):
     ps = build_providers(get_settings())
     assert isinstance(ps["macro"], MacroProvider)
     assert ps["macro"].name == "macro"
+
+
+# ── world_bank passthrough (2026-11-18 merge into get_economic_data) ────────
+
+CHN_GDP = f"{DEFAULT_WB_BASE_URL}/country/CHN/indicator/NY.GDP.MKTP.CD"
+
+
+@respx.mock
+async def test_world_bank_series_any_country_and_indicator(monkeypatch):
+    respx.get(CHN_GDP).respond(200, json=wb_body([
+        {"indicator": {"id": "NY.GDP.MKTP.CD", "value": "GDP (current US$)"},
+         "country": {"id": "CN", "value": "China"}, "countryiso3code": "CHN",
+         "date": "2024", "value": 18729668435848, "decimal": 0}]))
+    p = make_provider(monkeypatch)
+    rows = await p.world_bank_series("NY.GDP.MKTP.CD", "CHN", 2000, 2024)
+    assert rows == [{"date": "2024", "value": 18729668435848,
+                     "country": "CHN", "indicator": "NY.GDP.MKTP.CD"}]
+    params = respx.calls[0].request.url.params
+    assert params["date"] == "2000:2024"
+
+
+@respx.mock
+async def test_world_bank_series_paging_refused_at_custom_per_page(monkeypatch):
+    respx.get(CHN_GDP).respond(200, json=[
+        {"page": 1, "pages": 3, "per_page": 5, "total": 13}, []])
+    p = make_provider(monkeypatch)
+    with pytest.raises(Exception) as ei:
+        await p.world_bank_series("NY.GDP.MKTP.CD", "CHN", 2000, 2024, per_page=5)
+    assert "partial" in str(ei.value)
+
+
+async def test_world_bank_series_rejects_bad_window(monkeypatch):
+    p = make_provider(monkeypatch)
+    with pytest.raises(NotFound, match="start"):
+        await p.world_bank_series("NY.GDP.MKTP.CD", "CHN", 2024, 2000)
+    with pytest.raises(NotFound, match="1960"):
+        await p.world_bank_series("NY.GDP.MKTP.CD", "CHN", 1900, 2000)
+
+
+@respx.mock
+async def test_world_bank_series_empty_rows_is_not_found(monkeypatch):
+    respx.get(CHN_GDP).respond(200, json=wb_body([]))
+    p = make_provider(monkeypatch)
+    with pytest.raises(NotFound, match="CHN"):
+        await p.world_bank_series("NY.GDP.MKTP.CD", "CHN", 2000, 2024)

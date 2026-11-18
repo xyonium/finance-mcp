@@ -5,7 +5,8 @@ from unified_finance_mcp.providers import build_providers
 def test_registry_keys():
     ps = build_providers(get_settings())
     assert set(ps) == {"yahoo", "tradingview", "fmp", "alphavantage", "marketaux",
-                       "futu", "eastmoney", "kimi", "macro", "cex", "fred"}
+                       "futu", "eastmoney", "kimi", "macro", "cex", "fred",
+                       "edgar", "treasury"}
 
 
 def test_cex_absent_when_disabled(monkeypatch):

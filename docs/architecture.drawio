@@ -11,7 +11,7 @@
         </mxCell>
 
         <!-- Row 2: server frame -->
-        <mxCell id="serverBox" value="unified-finance-mcp&#10;&lt;font style=&quot;font-size:10px&quot;&gt;20 unified tools (auto-routed) + 53 futu-opend-mcp tools (mounted) = 73&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=14;fontStyle=1;verticalAlign=top;spacingTop=8;arcSize=2;" vertex="1" parent="1">
+        <mxCell id="serverBox" value="unified-finance-mcp&#10;&lt;font style=&quot;font-size:10px&quot;&gt;23 unified tools (auto-routed) + 53 futu-opend-mcp tools (mounted) = 76&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=14;fontStyle=1;verticalAlign=top;spacingTop=8;arcSize=2;" vertex="1" parent="1">
           <mxGeometry x="40" y="96" width="1080" height="272" as="geometry" />
         </mxCell>
 

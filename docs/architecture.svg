@@ -25,7 +25,7 @@
   <!-- Row 2: server -->
   <rect class="box" x="40" y="96" width="1080" height="272" fill="#ffffff" stroke="#666"/>
   <text class="title" x="580" y="113" text-anchor="middle" font-size="14">unified-finance-mcp</text>
-  <text class="ts" x="580" y="129" text-anchor="middle">20 unified tools (auto-routed) + 53 futu-opend-mcp tools (mounted) = 73</text>
+  <text class="ts" x="580" y="129" text-anchor="middle">23 unified tools (auto-routed) + 53 futu-opend-mcp tools (mounted) = 76</text>
 
   <!-- group: market data -->
   <rect x="60" y="140" width="470" height="210" fill="#f8f9fa" stroke="#999" rx="4"/>

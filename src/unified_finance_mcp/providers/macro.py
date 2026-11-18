@@ -30,8 +30,8 @@ SDMX/XBRL parsing cost is out of scope for this task, follow-up work):
 - ecb (data-api.ecb.europa.eu, SDMX 2.1): EXR/MIR/FM/ICP flows.
 - oecd (sdmx.oecd.org, SDMX 3.0): EO/QNA flows.
 - eurostat (dissemination API, JSON-stat 2.0): nama_10_gdp et al.
-- sec_edgar (data.sec.gov XBRL): filing-level companyfacts, nothing to do
-  with national macro series — belongs in a future fundamentals provider.
+- sec_edgar (data.sec.gov XBRL): implemented in providers/edgar.py instead
+  (filing-level facts, not a national macro series).
 
 Anti-hallucination discipline (inherited from alphavantage.py): rows are
 exactly what the upstream API returns. No interpolation, no gap-filling, no
@@ -130,13 +130,33 @@ class MacroProvider(Provider):
 
     # ── world_bank (keyless) ────────────────────────────────────────────────
 
-    async def _world_bank(self, code: str) -> list[dict]:
+    async def world_bank_series(self, indicator: str, country: str = _WB_COUNTRY,
+                                start: int = 1980, end: int = 2026,
+                                per_page: int = _WB_PER_PAGE) -> list[dict]:
+        """Any World Bank indicator x country, keyless.
+
+        `indicator` is a WB code ("NY.GDP.MKTP.CD"), `country` an ISO3 or a WB
+        aggregate ("WLD", "CHN", "EAP"). Annual granularity only — that is
+        what the Indicators API serves. Paged responses are refused rather
+        than silently truncated; raise `per_page` (max 20000) or narrow the
+        window instead.
+        """
+        code = (indicator or "").strip()
+        iso = (country or "").strip().upper()
+        if not code or not iso:
+            raise NotFound("macro/world_bank: empty indicator/country")
+        if not 1960 <= int(start) <= 2100 or not 1960 <= int(end) <= 2100:
+            raise NotFound("macro/world_bank: start/end must be 1960..2100")
+        if int(start) > int(end):
+            raise NotFound("macro/world_bank: start must be <= end")
+        if not 1 <= int(per_page) <= 20000:
+            raise NotFound("macro/world_bank: per_page must be 1..20000")
         url = (f"{self.settings.world_bank_base_url.rstrip('/')}"
-               f"/country/{_WB_COUNTRY}/indicator/{code}")
+               f"/country/{iso}/indicator/{code}")
         try:
             data = await self._get_client().get_json(url, params={
-                "format": "json", "per_page": _WB_PER_PAGE,
-                "date": _WB_DATE_RANGE})
+                "format": "json", "per_page": int(per_page),
+                "date": f"{int(start)}:{int(end)}"})
         except UpstreamError as e:
             raise UpstreamError(f"macro/world_bank: {e}") from e
         # WB answers /indicator/{code} with [meta, rows]; an unknown code
@@ -152,8 +172,12 @@ class MacroProvider(Provider):
                                 f"{meta.get('pages')} pages; refusing partial data")
         rows = [_wb_row(r) for r in data[1] if isinstance(r, dict)]
         if not rows:
-            raise NotFound(f"macro/world_bank: no {code} data for {_WB_COUNTRY}")
+            raise NotFound(f"macro/world_bank: no {code} data for {iso}")
         return rows
+
+    async def _world_bank(self, code: str) -> list[dict]:
+        """Canonical-8 helper: the World aggregate, 1980-2026 window."""
+        return await self.world_bank_series(code, _WB_COUNTRY, 1980, 2026)
 
     # ── fred (free registration key) ───────────────────────────────────────
 

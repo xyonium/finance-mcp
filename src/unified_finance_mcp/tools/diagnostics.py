@@ -37,7 +37,7 @@ log = logging.getLogger("unified_finance_mcp")
 UNIFIED_MODULES = [
     "quote", "history", "fundamentals", "news", "technicals", "screener",
     "ownership", "calendar", "macro", "search", "intel", "containers",
-    "backtest", "kimi", "diagnostics", "cex",
+    "backtest", "kimi", "diagnostics", "cex", "fred", "edgar",
 ]
 # canonical map of each unified module -> the tools it registers (verified
 # against each module's register(); a drift here fails tests/test_diagnostics).
@@ -58,6 +58,8 @@ MODULE_TOOLS = {
     "kimi": {"kimi_datasource", "get_company_risk_cn"},
     "diagnostics": {"get_service_status"},
     "cex": {"cex_market"},
+    "fred": {"get_fred_series", "search_fred_series"},
+    "edgar": {"get_sec_filing"},
 }
 
 _KEY_BASES = {
