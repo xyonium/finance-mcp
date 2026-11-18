@@ -9,7 +9,9 @@ tool was added for the K-Dense gaps; instead the same tool grew:
    granularity. Replaces the former "World Bank passthrough" tool idea.
 3. **US Treasury** — two pseudo-indicators served by providers/treasury.py:
    `TREASURY_YIELD_CURVE` (full 1 Mo..30 Yr par curve for one `period`
-   YYYY-MM) and `TREASURY_DEBT` (daily debt to the penny, `period` unused).
+   YYYY-MM), `TREASURY_DEBT` (daily debt to the penny) and
+   `TREASURY_AVG_INTEREST_RATE` (average coupon on the outstanding debt; the
+   last two ignore `period`).
    The curve closes a real hole: before this, the only rate in the repo was
    10Y, so 2s10s/inversion questions were unanswerable.
 
@@ -37,6 +39,7 @@ TREASURY_CHAIN = ["treasury"]
 TREASURY_ALIASES: dict[str, str] = {
     "TREASURY_YIELD_CURVE": "yield_curve",
     "TREASURY_DEBT": "debt_to_penny",
+    "TREASURY_AVG_INTEREST_RATE": "avg_interest_rates",
 }
 # A World Bank code always has at least one dot ("NY.GDP.MKTP.CD",
 # "SP.POP.TOTL"); the canonical 8 have none. That is what keeps the two
@@ -79,8 +82,9 @@ def register(mcp, providers, settings) -> None:
         3. US Treasury pseudo-indicators: `TREASURY_YIELD_CURVE` — the daily
            par curve for `period` (YYYY-MM, default current month), one row
            per day with tenor columns 1M/1.5M/2M/3M/4M/6M/1Y/2Y/3Y/5Y/7Y/10Y/
-           20Y/30Y; `TREASURY_DEBT` — daily federal debt to the penny (newest
-           first). `source` may be auto | treasury.
+           20Y/30Y; `TREASURY_DEBT` — daily federal debt to the penny; and
+           `TREASURY_AVG_INTEREST_RATE` — the average interest rate on the
+           outstanding debt (newest first). `source` may be auto | treasury.
 
         Returns {"data": [...]} on success (plus indicator/country/period
         metadata where relevant), or the routing error dict at the top level

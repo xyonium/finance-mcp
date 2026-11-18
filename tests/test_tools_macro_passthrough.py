@@ -142,3 +142,16 @@ async def test_unknown_indicator_hint_names_all_three_vocabularies():
     assert "TREASURY_YIELD_CURVE" in out["hint"]
     assert "World Bank" in out["hint"]
     assert "GDP" in out["hint"]
+
+
+async def test_treasury_avg_interest_rate_dispatches_to_its_dataset():
+    providers = _stub(build_providers(get_settings()))
+    providers["treasury"].fiscal = AsyncMock(
+        return_value={"kind": "avg_interest_rates", "total": 1, "count": 1,
+                      "data": [{"record_date": "2026-09-30",
+                                "avg_interest_rate_amt": "3.4"}]})
+    tool = _register(providers)
+    out = await tool("TREASURY_AVG_INTEREST_RATE")
+    assert out["indicator"] == "TREASURY_AVG_INTEREST_RATE"
+    assert out["kind"] == "avg_interest_rates"
+    providers["treasury"].fiscal.assert_awaited_once_with("avg_interest_rates")
