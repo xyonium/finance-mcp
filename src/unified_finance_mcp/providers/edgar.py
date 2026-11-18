@@ -22,7 +22,7 @@ deliberately NOT used: it is not a stable public contract.
 
 `companyfacts` (3.8 MB for AAPL) is deliberately not fetched: callers pass a
 tag whitelist and this provider issues one small companyconcept per tag
-(2-8 KB each), so one tool call can never balloon to megabytes.
+(2-50 KB each, depending on the concept's history), so one tool call can never balloon to megabytes.
 
 Anti-hallucination discipline (same as fred.py): rows are exactly what SEC
 returns — no interpolation, no restatement, no gap-filling. `val` is left as

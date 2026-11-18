@@ -49,7 +49,7 @@ live smoke 不进 CI：手工跑，且每个会话最多 1-2 次真实调用（�
 需 key（全部免费档）：`FRED_API_KEY`（120 req/min）、`FMP_API_KEY`、`ALPHAVANTAGE_API_KEY`（免费档约 25 次/日，自动化测试一律 mock）、`MARKETAUX_API_TOKEN`、Kimi（proxy / token / auth-file 三选一）。
 
 - **SEC EDGAR 的坑**：SEC 对"未声明 UA"返回 403 `Undeclared Automated Tool`。仓库共享 UA 含 `github.com`，**必被 403**（2026-11-18 实测）。EDGAR provider 因此自带 UA：`SEC_EDGAR_USER_AGENT`，默认 `unified-finance-mcp`；建议设成 `"unified-finance-mcp your@email"`。SEC 站点级上限 10 req/s，PoliteClient 的 0.5s 节奏 = 2 req/s。
-- `get_sec_filing` 用 `companyconcept`（2-8 KB/tag）而不是 `companyfacts`（AAPL 3.8 MB），**永远不要**把整包 companyfacts 返回给模型。
+- `get_sec_filing` 用 `companyconcept`（2–50 KB/tag，随概念点数增长）而不是 `companyfacts`（AAPL 3.8 MB），**永远不要**把整包 companyfacts 返回给模型。
 - Treasury 曲线用 `home.treasury.gov` 的 CSV 导出（`_format=csv`），不是 XML feed；Fiscal Data 是另一个 host 的 JSON API。`monthly_treasury_statement` 端点已 404，正确入口是 `/v1/accounting/mts/mts_table_N`。
 
 ## 测试纪律

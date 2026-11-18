@@ -159,6 +159,8 @@ class MacroProvider(Provider):
                 "date": f"{int(start)}:{int(end)}"})
         except UpstreamError as e:
             raise UpstreamError(f"macro/world_bank: {e}") from e
+        except ValueError as e:
+            raise UpstreamError("macro/world_bank: non-JSON body") from e
         # WB answers /indicator/{code} with [meta, rows]; an unknown code
         # returns [meta, []] (200) — both handled below. A non-list body is a
         # gateway problem, not a "no data" answer.
@@ -226,6 +228,8 @@ class MacroProvider(Provider):
             data = await self._get_client().get_json(url)
         except UpstreamError as e:
             raise UpstreamError(f"macro/imf: {e}") from e
+        except ValueError as e:
+            raise UpstreamError("macro/imf: non-JSON body") from e
         if not isinstance(data, dict):
             raise UpstreamError(f"macro/imf: unexpected body from {url}")
         series = ((data.get("values") or {}).get(indicator) or {}).get(_WB_COUNTRY)

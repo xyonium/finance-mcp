@@ -4,7 +4,7 @@ Endpoint paths are pinned to https://financialmodelingprep.com/developer/docs
 (stable). The `import httpx` from the plan's verbatim block was dropped: ruff
 F401 flags it as unused (deviation noted in the task report).
 """
-from datetime import datetime, timezone
+from datetime import date
 
 import pytest
 import respx
@@ -141,7 +141,7 @@ async def test_ownership_institutional_positions_summary(monkeypatch):
     rows = await p.ownership(parse_symbol("AAPL"), "institutional")
     assert rows[0]["investorsHolding"] == 4300
     params = respx.calls[0].request.url.params
-    today = datetime.now(timezone.utc).date()  # mirrors the provider's UTC date
+    today = date.today()  # mirrors the provider's local-date convention
     assert params["year"] == str(today.year)
     assert params["quarter"] == str((today.month - 1) // 3 + 1)
 
@@ -347,3 +347,23 @@ async def test_screener_no_filters(monkeypatch):
     p = make_provider(monkeypatch)
     assert (await p.screener())[0]["symbol"] == "AAPL" and route.called
     assert respx.calls[0].request.url.params["limit"] == "25"
+
+
+@respx.mock
+async def test_ownership_13f_window_uses_local_today(monkeypatch):
+    """Pins the local-date contract with a fixed clock (no system-time flake)."""
+    import unified_finance_mcp.providers.fmp as fmp_mod
+
+    class FixedDate:
+        @staticmethod
+        def today():
+            return date(2026, 4, 1)
+
+    monkeypatch.setattr(fmp_mod, "date", FixedDate)
+    respx.get("https://financialmodelingprep.com/stable/"
+              "institutional-ownership/symbol-positions-summary").respond(
+        200, json=[{"symbol": "AAPL", "investorsHolding": 1}])
+    p = make_provider(monkeypatch)
+    await p.ownership(parse_symbol("AAPL"), "institutional")
+    params = respx.calls[0].request.url.params
+    assert params["year"] == "2026" and params["quarter"] == "2"

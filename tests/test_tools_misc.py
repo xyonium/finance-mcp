@@ -6,6 +6,7 @@ candidate set for its input at the provider-instance level and forces
 availability at instance level (_set_available) so results are identical
 keyless or keyed. futu is not in any of these chains.
 """
+from datetime import date
 from unittest.mock import AsyncMock
 
 from unified_finance_mcp.config import get_settings
@@ -262,3 +263,14 @@ async def test_search_symbols_empty_query_hint(monkeypatch):
     search_mod.register(_capture(results), providers, get_settings())
     out = await results["search_symbols"]("   ")
     assert "error" in out and "hint" in out
+
+
+def test_calendar_default_window_uses_local_today(monkeypatch):
+    """Pins the local-date contract for the default +/-7 day window."""
+    class FixedDate:
+        @staticmethod
+        def today():
+            return date(2026, 3, 15)
+
+    monkeypatch.setattr(calendar_mod, "date", FixedDate)
+    assert calendar_mod._default_window() == ("2026-03-08", "2026-03-22")

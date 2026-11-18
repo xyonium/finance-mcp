@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import date
 
 from ..config import DEFAULT_FMP_BASE_URL, Settings
 from ..errors import NotFound, ProviderError, RateLimited, UpstreamError, scrub
@@ -169,8 +169,7 @@ class FmpProvider(Provider):
 
     async def ownership(self, parsed: ParsedSymbol, kind: str) -> list[dict]:
         if kind == "institutional":
-            # UTC date: deterministic across deployments and DTZ-clean.
-            today = datetime.now(timezone.utc).date()  # FMP 13F year/quarter
+            today = date.today()  # FMP 13F uses the local year/quarter
             return await self._get(
                 "institutional-ownership/symbol-positions-summary",
                 symbol=parsed.fmp(), year=today.year, quarter=(today.month - 1) // 3 + 1)

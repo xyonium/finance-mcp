@@ -23,7 +23,7 @@
 2. **`/v1/accounting/od/monthly_treasury_statement` 是 404**（handoff 标"已验证"），正确入口是 `/v1/accounting/mts/mts_table_N`；本轮不做 MTS。
 3. **收益率曲线不必走 XML**：`home.treasury.gov/.../daily-treasury-rates.csv/all/{YYYYMM}?type=daily_treasury_yield_curve&_format=csv` 直接返回 1Mo–30Y 全曲线（约 1 KB/月）。handoff 说的"单开 XML 任务"不成立。
 
-另外：`companyfacts`（AAPL 3.86 MB）不用；白名单 tag 改成逐个 `companyconcept`（2-8 KB/tag），一次调用永远到不了 MB 级。
+另外：`companyfacts`（AAPL 3.86 MB）不用；白名单 tag 改成逐个 `companyconcept`（2–50 KB/tag，随概念点数增长），一次调用永远到不了 MB 级。
 
 ## 明确不做 / 暂缓
 
@@ -43,3 +43,32 @@
 
 - `pytest -q -m "not integration"`：734 passed, 3 skipped；`ruff check .` 全绿
 - live smoke（2026-11-18）：AAPL 10-K×3、AAPL 三 tag facts、CHN GDP 2022-2024、2026-11 曲线（1M 4.09 / 2Y 4.80 / 10Y 5.10 / 30Y 5.46）、debt_to_penny 2026-11-16 = 40,662,417,395,617.43
+
+## 2026-11-18 二次调研：未接入源的"备用价值"实测
+
+**方法**：先测**部署机可达性**，再谈价值。被网络挡住的源没有备份价值——这一点比 API 文档更重要。
+
+| 源 | 从 dockerno1 实测 | 结论 |
+|---|---|---|
+| BLS `api.bls.gov` | **403 Access Denied**（Akamai，默认 UA 与浏览器 UA 都一样） | 不可接：v2 key 再免费也没用，部署出口被拦 |
+| US Census `api.census.gov` | **403 Access Denied**（同上） | 不可接 |
+| BEA `apps.bea.gov` | 200；`UserID=DEMO` 取数报 `This UserId is not active` | 可达，真 key 免费（100 req/min），但只补 NIPA 细分/区域 GDP/行业 PCE |
+| ECB `data-api.ecb.europa.eu` | 200；`YC/B.U2...SR_10Y` 有日频欧元区即期曲线 | 可达且是唯一"今天答不了"的增量，但受众小众（本仓库以 US/HK/CN/EG 为主） |
+| Eurostat | 200（JSON-stat 2.0，34 KB/单指标） | HICP 与 FRED 欧元区序列重叠，解析成本高 |
+| OECD | 200（SDMX/XML） | 与 World Bank/IMF 高度重叠 |
+| Data Commons | **401 UNAUTHENTICATED** | 需 key + 自有 schema，不是 REST 直读 |
+| Treasury MTS `/v1/accounting/mts/mts_table_1` | 200 | 机构/职能级收支明细；FRED 已有总额（收/支/赤字），增量小众 |
+
+**裁决：本轮不再加源。** 理由按强度排序：
+
+1. BLS/Census 的"免费 key 备份"在部署出口上**不可实现**（403），先排除。
+2. BEA 可达但只补区域/行业细分；作为 GDP/PCE 备份的价值低于多维护一个 key-gated provider 的成本。
+3. ECB 日频欧元区曲线、MTS 机构明细、Eurostat/OECD 都是"有增量但主线弱"；不做。
+4. Data Commons/WHO 仍按原裁决不做。
+
+**触发条件（满足再开任务）**：
+- 换出口/加代理后 BLS 可达 → 再评估 BLS v2 作为 CPI/UNRATE/PAYEMS 的 FRED 备份（500 查询/日、50 序列/查询）；
+- 明确需要 BEA 区域 GDP / 行业 PCE 或欧元区日频曲线；
+- FRED 停服或 key 政策变化。
+
+**给未来的提示**：任何"免费 key 源"的立项都先跑一遍 `curl` 可达性，再写 provider——`docs/CREDENTIALS.md` 第 2 级表格里的配额数字，只有在网络可达时才有意义。

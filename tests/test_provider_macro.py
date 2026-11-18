@@ -304,3 +304,13 @@ async def test_world_bank_series_empty_rows_is_not_found(monkeypatch):
     p = make_provider(monkeypatch)
     with pytest.raises(NotFound, match="CHN"):
         await p.world_bank_series("NY.GDP.MKTP.CD", "CHN", 2000, 2024)
+
+
+@respx.mock
+async def test_world_bank_series_non_json_body_is_upstream_error(monkeypatch):
+    """HTTP 200 HTML must map to the taxonomy, not leak ValueError."""
+    respx.get(CHN_GDP).respond(200, text="<html>maintenance</html>")
+    p = make_provider(monkeypatch)
+    with pytest.raises(Exception) as ei:
+        await p.world_bank_series("NY.GDP.MKTP.CD", "CHN", 2000, 2024)
+    assert "non-JSON" in str(ei.value)

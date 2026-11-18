@@ -176,3 +176,31 @@ async def test_fiscal_empty_rows_is_not_found(monkeypatch):
     p = make_provider(monkeypatch)
     with pytest.raises(NotFound, match="debt_to_penny"):
         await p.fiscal("debt_to_penny")
+
+
+# ── review follow-ups (2026-11-18) ──────────────────────────────────────────
+
+@respx.mock
+async def test_yield_curve_skips_impossible_calendar_date(monkeypatch):
+    """02/31/2026 matches the shape but is not a date; the row is skipped."""
+    bad_row = ('02/31/2026,4.0,4.0,4.0,4.0,4.0,4.0,4.0,4.0,4.0,4.0,4.0,4.0,4.0,4.0\n')
+    respx.get(CURVE_URL).respond(200, text=CURVE_CSV + bad_row)
+    p = make_provider(monkeypatch)
+    out = await p.yield_curve("2026-11")
+    assert [r["date"] for r in out["data"]] == [
+        "2026-11-17", "2026-11-16"]  # bad row dropped, never invented
+
+
+@respx.mock
+async def test_fiscal_non_json_body_is_upstream_error(monkeypatch):
+    """HTTP 200 with HTML must map to the taxonomy, not leak ValueError."""
+    respx.get(DEBT_URL).respond(200, text="<html>maintenance</html>")
+    p = make_provider(monkeypatch)
+    with pytest.raises(UpstreamError, match="non-JSON"):
+        await p.fiscal("debt_to_penny")
+
+
+async def test_fiscal_rejects_impossible_date_from(monkeypatch):
+    p = make_provider(monkeypatch)
+    with pytest.raises(NotFound, match="real"):
+        await p.fiscal("debt_to_penny", date_from="2026-02-31")

@@ -9,7 +9,7 @@ profile-shaped that is not market analysis: company profile/executives/
 operational-efficiency, sector & industry-chain structure, and the
 institution directory/profile/holdings reverse lookups. The model sees
 7 futu tools instead of 53 and pulls reference data on demand via
-`action=list|describe|call` (76 -> 28 tools total, then 47 of the futu
+`action=list|describe|call` (76 -> 30 tools total, then 47 of the futu
 names collapse into the containers' hints).
 
 The vendored skill pack is never patched: a container is a thin async

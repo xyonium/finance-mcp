@@ -49,3 +49,13 @@ markers = ["integration: needs live APIs or a live OpenD gateway"]
 
 [tool.ruff]
 line-length = 100
+
+# Local-date semantics are deliberate in these three places (FMP 13F uses the
+# local year/quarter; the calendar window is local per the T13 brief). Ruff's
+# rule set drifts across versions (0.16 enables DTZ, 0.17 enables RUF100), so
+# a `# noqa: DTZ011` is "unused" on one and required on the other. Ignoring
+# the rule per file is the only version-stable spelling.
+[tool.ruff.lint.per-file-ignores]
+"src/unified_finance_mcp/providers/fmp.py" = ["DTZ011"]
+"src/unified_finance_mcp/tools/calendar.py" = ["DTZ011"]
+"tests/test_provider_fmp.py" = ["DTZ011"]

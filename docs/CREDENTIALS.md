@@ -28,7 +28,7 @@ export SEC_EDGAR_USER_AGENT="unified-finance-mcp your@email"
 
 ### 2. FRED（`FRED_API_KEY`）
 
-免费注册 5 分钟，120 req/min；解锁 `get_fred_series` / `search_fred_series` 与 8 个 canonical 指标的月度序列（GDP/CPI/UNRATE/DGS10/…）。
+免费注册 5 分钟，120 req/min；解锁 `get_fred_series` / `search_fred_series` 与 8 个 canonical 指标的月/季度序列（GDP 季度；CPI/UNRATE/DGS10 月度）。
 
 1. 打开 <https://fredaccount.stlouisfed.org/apikeys> 注册并登录
 2. **Request API Key** → 填用途 → 复制 32 位 key

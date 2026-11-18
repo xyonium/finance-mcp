@@ -27,7 +27,7 @@
 ### 1. `get_sec_filing(symbol_or_cik, kind="filings"|"facts", form_type=None, tags=None, limit=20, source="auto")`
 
 - `kind=filings` → `EdgarProvider.submissions()`：读 `filings.recent`（最近 ~1000 条），字段 form / filing_date / report_date / accession_number / primary_document / description / items / is_xbrl。`form_type` 逗号分隔，裸 form 同时匹配修订版（`10-K` ⊃ `10-K/A`）。
-- `kind=facts` → `EdgarProvider.facts()`：`tags` 白名单（≤8，默认 `Revenues,NetIncomeLoss,EarningsPerShareDiluted`），**逐个 `companyconcept`**（2-8 KB/tag），不取 `companyfacts`（AAPL 3.86 MB）；未上报的 tag 进 `missing_tags`，不是错误。
+- `kind=facts` → `EdgarProvider.facts()`：`tags` 白名单（≤8，默认 `Revenues,NetIncomeLoss,EarningsPerShareDiluted`），**逐个 `companyconcept`**（2–50 KB/tag，随概念点数增长），不取 `companyfacts`（AAPL 3.86 MB）；未上报的 tag 进 `missing_tags`，不是错误。
 - CIK 解析：`CIK0000320193` / `320193` / 10 位零填充直接过；ticker 走 `company_tickers.json`（~800 KB，进程内缓存 24h）。
 - UA：`SEC_EDGAR_USER_AGENT`，默认 `unified-finance-mcp`；**不复用 `http.UA`**（含 github.com → 403）。403 映射为 `AuthError` 并附配置指引。
 - markets = `{"US"}`；chain `["edgar"]`。

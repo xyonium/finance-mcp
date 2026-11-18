@@ -31,7 +31,7 @@ from __future__ import annotations
 import csv
 import io
 import re
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from ..config import Settings
 from ..errors import NotFound, UpstreamError
@@ -129,10 +129,13 @@ class TreasuryProvider(Provider):
             if not m_date:
                 continue  # a malformed row is skipped, never guessed
             month, day, year = (int(g) for g in m_date.groups())
-            if not (1 <= month <= 12 and 1 <= day <= 31):
+            try:
+                # real calendar check: 02/31 is not a date, so the row is
+                # skipped like any other malformed row (never invented).
+                stamp = date(year, month, day).isoformat()
+            except ValueError:
                 continue
-            date = f"{year:04d}-{month:02d}-{day:02d}"
-            row = {"date": date}
+            row = {"date": stamp}
             for col, tenor in labels.items():
                 row[tenor] = _num(raw.get(col, ""))
             rows.append(row)
@@ -154,9 +157,15 @@ class TreasuryProvider(Provider):
         if path is None:
             raise NotFound(f"treasury: unknown kind {kind!r}; "
                            f"valid: {sorted(FISCAL_KINDS)}")
-        if date_from is not None and not _DATE_RE.match(date_from.strip()):
-            raise NotFound(f"treasury: date_from must be YYYY-MM-DD, "
-                           f"got {date_from!r}")
+        if date_from is not None:
+            raw_from = date_from.strip()
+            try:
+                if not _DATE_RE.match(raw_from):
+                    raise ValueError
+                date.fromisoformat(raw_from)
+            except ValueError:
+                raise NotFound(f"treasury: date_from must be a real "
+                               f"YYYY-MM-DD date, got {date_from!r}") from None
         n = max(1, min(int(page_size), 1000))
         params: dict = {"page[size]": str(n), "sort": "-record_date"}
         if date_from:
@@ -166,6 +175,10 @@ class TreasuryProvider(Provider):
             data = await self._get_client().get_json(url, params=params)
         except UpstreamError as e:
             raise UpstreamError(f"treasury/{kind}: {e}") from e
+        except ValueError as e:
+            # 200 with a non-JSON body must not escape as a raw ValueError;
+            # the provider contract is the errors.py taxonomy.
+            raise UpstreamError(f"treasury/{kind}: non-JSON body") from e
         if not isinstance(data, dict):
             raise UpstreamError(f"treasury/{kind}: unexpected body")
         rows = data.get("data")
