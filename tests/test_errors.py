@@ -1,4 +1,4 @@
-from unified_finance_mcp.errors import RateLimited, scrub, tool_error
+from unified_finance_mcp.errors import RateLimited, UpstreamDrift, scrub, tool_error
 
 
 def test_tool_error_shape():
@@ -12,3 +12,9 @@ def test_scrub_removes_secrets():
 
 def test_kinds():
     assert RateLimited("x").kind == "rate_limited" and RateLimited("x").retryable
+
+
+def test_drift_is_an_upstream_error_but_not_retryable():
+    d = UpstreamDrift("schema changed")
+    assert d.kind == "upstream_drift"
+    assert d.retryable is False

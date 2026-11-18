@@ -36,7 +36,7 @@ import time
 from typing import Any
 
 from ..config import DEFAULT_SEC_EDGAR_USER_AGENT, Settings
-from ..errors import AuthError, NotFound, UpstreamError
+from ..errors import AuthError, NotFound, UpstreamDrift, UpstreamError
 from ..http import PoliteClient
 from .base import Provider
 
@@ -121,7 +121,7 @@ class EdgarProvider(Provider):
         try:
             return resp.json()
         except ValueError as e:
-            raise UpstreamError(f"edgar: non-JSON body from {host}") from e
+            raise UpstreamDrift(f"edgar: non-JSON body from {host}") from e
 
     async def _tickers_map(self) -> dict[str, str]:
         now = time.monotonic()
@@ -129,7 +129,7 @@ class EdgarProvider(Provider):
             return self._tickers
         data = await self._get_json(self.settings.sec_edgar_tickers_url)
         if not isinstance(data, dict):
-            raise UpstreamError("edgar: unexpected ticker-map body")
+            raise UpstreamDrift("edgar: unexpected ticker-map body")
         out: dict[str, str] = {}
         for row in data.values():
             if not isinstance(row, dict):
@@ -169,7 +169,7 @@ class EdgarProvider(Provider):
         data = await self._get_json(
             f"{self.settings.sec_edgar_base_url.rstrip('/')}/submissions/CIK{cik}.json")
         if not isinstance(data, dict):
-            raise UpstreamError("edgar: unexpected submissions body")
+            raise UpstreamDrift("edgar: unexpected submissions body")
         recent = (data.get("filings") or {}).get("recent")
         if not isinstance(recent, dict):
             raise UpstreamError("edgar: submissions body has no filings.recent")
@@ -225,7 +225,7 @@ class EdgarProvider(Provider):
             raise NotFound(f"edgar: tag {tag!r} not reported by CIK {cik} "
                            f"({taxonomy})") from e
         if not isinstance(data, dict):
-            raise UpstreamError("edgar: unexpected companyconcept body")
+            raise UpstreamDrift("edgar: unexpected companyconcept body")
         units = data.get("units")
         if not isinstance(units, dict) or not units:
             raise NotFound(f"edgar: tag {tag!r} has no unit series for CIK {cik}")

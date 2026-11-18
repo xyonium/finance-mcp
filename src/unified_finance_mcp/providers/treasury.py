@@ -34,7 +34,7 @@ import re
 from datetime import date, datetime, timezone
 
 from ..config import Settings
-from ..errors import NotFound, UpstreamError
+from ..errors import NotFound, UpstreamDrift, UpstreamError
 from ..http import PoliteClient
 from .base import Provider
 
@@ -120,7 +120,7 @@ class TreasuryProvider(Provider):
             raise NotFound(f"treasury: no yield-curve rows for {ym}")
         reader = csv.DictReader(io.StringIO(text))
         if not reader.fieldnames or "Date" not in reader.fieldnames:
-            raise UpstreamError(f"treasury: unexpected CSV header for {ym}: "
+            raise UpstreamDrift(f"treasury: unexpected CSV header for {ym}: "
                                 f"{reader.fieldnames}")
         labels = {col: _tenor(col) for col in reader.fieldnames if col != "Date"}
         rows = []
@@ -178,9 +178,9 @@ class TreasuryProvider(Provider):
         except ValueError as e:
             # 200 with a non-JSON body must not escape as a raw ValueError;
             # the provider contract is the errors.py taxonomy.
-            raise UpstreamError(f"treasury/{kind}: non-JSON body") from e
+            raise UpstreamDrift(f"treasury/{kind}: non-JSON body") from e
         if not isinstance(data, dict):
-            raise UpstreamError(f"treasury/{kind}: unexpected body")
+            raise UpstreamDrift(f"treasury/{kind}: unexpected body")
         rows = data.get("data")
         if not isinstance(rows, list) or not rows:
             raise NotFound(f"treasury/{kind}: no rows"

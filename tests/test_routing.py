@@ -1,4 +1,4 @@
-from unified_finance_mcp.errors import ProviderError
+from unified_finance_mcp.errors import ProviderError, UpstreamDrift
 from unified_finance_mcp.tools._routing import route_and_call
 
 
@@ -53,3 +53,30 @@ async def test_explicit_source_unconfigured():
     out = await route_and_call(market="US", chain=["a"], providers={"a": a},
                                call=call, explicit_source="a")
     assert "not configured" in out["error"]
+
+
+async def test_drift_failure_asks_the_model_to_contact_admin():
+    a = FakeProvider("a", exc=UpstreamDrift("html instead of json"))
+    b = FakeProvider("b", exc=ProviderError("down"))
+    out = await route_and_call(market="US", chain=["a", "b"],
+                               providers={"a": a, "b": b}, call=call)
+    assert out["action"] == "contact_admin"
+    assert out["drifted_sources"] == ["a"]
+    assert "联系管理员" in out["hint"]
+    assert out["source_errors"]["a"].startswith("upstream_drift:")
+
+
+async def test_connectivity_failure_has_no_contact_admin_action():
+    a = FakeProvider("a", exc=ProviderError("timeout"))
+    out = await route_and_call(market="US", chain=["a"],
+                               providers={"a": a}, call=call)
+    assert "action" not in out and "hint" not in out
+
+
+async def test_explicit_source_drift_also_carries_the_action():
+    a = FakeProvider("a", exc=UpstreamDrift("bad csv header"))
+    out = await route_and_call(market="US", chain=["a"],
+                               providers={"a": a}, call=call,
+                               explicit_source="a")
+    assert out["action"] == "contact_admin"
+    assert out["drifted_sources"] == ["a"]

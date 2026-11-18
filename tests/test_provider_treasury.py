@@ -12,7 +12,7 @@ from unified_finance_mcp.config import (
     DEFAULT_TREASURY_YIELD_CSV_URL,
     get_settings,
 )
-from unified_finance_mcp.errors import NotFound, UpstreamError
+from unified_finance_mcp.errors import NotFound, UpstreamDrift
 from unified_finance_mcp.providers.treasury import (
     FISCAL_KINDS,
     TreasuryProvider,
@@ -113,7 +113,7 @@ async def test_yield_curve_empty_body_is_not_found(monkeypatch):
 async def test_yield_curve_unexpected_header_is_upstream_error(monkeypatch):
     respx.get(CURVE_URL).respond(200, text="foo,bar\n1,2\n")
     p = make_provider(monkeypatch)
-    with pytest.raises(UpstreamError, match="CSV header"):
+    with pytest.raises(UpstreamDrift, match="CSV header"):
         await p.yield_curve("2026-11")
 
 
@@ -196,7 +196,7 @@ async def test_fiscal_non_json_body_is_upstream_error(monkeypatch):
     """HTTP 200 with HTML must map to the taxonomy, not leak ValueError."""
     respx.get(DEBT_URL).respond(200, text="<html>maintenance</html>")
     p = make_provider(monkeypatch)
-    with pytest.raises(UpstreamError, match="non-JSON"):
+    with pytest.raises(UpstreamDrift, match="non-JSON"):
         await p.fiscal("debt_to_penny")
 
 

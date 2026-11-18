@@ -41,7 +41,7 @@ the upstream spelling (WB/FRED yearly "2025", monthly "2025-01").
 from __future__ import annotations
 
 from ..config import Settings
-from ..errors import NotFound, ProviderError, RateLimited, UpstreamError, scrub
+from ..errors import NotFound, ProviderError, RateLimited, UpstreamDrift, UpstreamError, scrub
 from ..http import PoliteClient
 from .base import Provider
 
@@ -160,17 +160,17 @@ class MacroProvider(Provider):
         except UpstreamError as e:
             raise UpstreamError(f"macro/world_bank: {e}") from e
         except ValueError as e:
-            raise UpstreamError("macro/world_bank: non-JSON body") from e
+            raise UpstreamDrift("macro/world_bank: non-JSON body") from e
         # WB answers /indicator/{code} with [meta, rows]; an unknown code
         # returns [meta, []] (200) — both handled below. A non-list body is a
         # gateway problem, not a "no data" answer.
         if not isinstance(data, list) or len(data) < 2 or not isinstance(data[1], list):
-            raise UpstreamError(f"macro/world_bank: unexpected body from {url}")
+            raise UpstreamDrift(f"macro/world_bank: unexpected body from {url}")
         meta = data[0] if isinstance(data[0], dict) else {}
         # paged responses (pages > 1) would mean silent truncation at
         # per_page; refuse rather than return partial data.
         if str(meta.get("pages", "1")) not in ("1",):
-            raise UpstreamError(f"macro/world_bank: response for {code} spans "
+            raise UpstreamDrift(f"macro/world_bank: response for {code} spans "
                                 f"{meta.get('pages')} pages; refusing partial data")
         rows = [_wb_row(r) for r in data[1] if isinstance(r, dict)]
         if not rows:
@@ -198,7 +198,7 @@ class MacroProvider(Provider):
             raise UpstreamError(scrub(f"macro/fred: {e}", key)) from e
         except ValueError as e:
             # 200 with a non-JSON body must not escape as raw JSONDecodeError.
-            raise UpstreamError(f"macro/fred: non-JSON body from "
+            raise UpstreamDrift(f"macro/fred: non-JSON body from "
                                 f"{scrub(url, key)}") from e
         if not isinstance(data, dict):
             raise UpstreamError(f"macro/fred: unexpected "
@@ -229,9 +229,9 @@ class MacroProvider(Provider):
         except UpstreamError as e:
             raise UpstreamError(f"macro/imf: {e}") from e
         except ValueError as e:
-            raise UpstreamError("macro/imf: non-JSON body") from e
+            raise UpstreamDrift("macro/imf: non-JSON body") from e
         if not isinstance(data, dict):
-            raise UpstreamError(f"macro/imf: unexpected body from {url}")
+            raise UpstreamDrift(f"macro/imf: unexpected body from {url}")
         series = ((data.get("values") or {}).get(indicator) or {}).get(_WB_COUNTRY)
         if not isinstance(series, dict) or not series:
             raise NotFound(f"macro/imf: no {indicator} series for {_WB_COUNTRY}")
@@ -258,6 +258,7 @@ class MacroProvider(Provider):
             "imf": self._imf,
         }
         last: Exception | None = None
+        drift: Exception | None = None
         for source, code in candidates:
             try:
                 rows = await sub_sources[source](code)
@@ -267,8 +268,14 @@ class MacroProvider(Provider):
             except (RateLimited, UpstreamError) as e:
                 # Retryable upstream trouble on this sub-source: fall through
                 # to the next one, but remember it (surfaced if all fail).
+                # Structural drift is remembered separately and wins the final
+                # raise: a later keyless NotFound must not hide a schema break.
+                if isinstance(e, UpstreamDrift):
+                    drift = drift or e
                 last = e
                 continue
             return rows
+        if drift is not None:
+            raise drift
         raise last if last is not None else NotFound(
             f"macro: no sub-source serves {key}")

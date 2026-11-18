@@ -5,7 +5,7 @@ Provider face is stubbed (AsyncMock); no network.
 from unittest.mock import AsyncMock
 
 from unified_finance_mcp.config import get_settings
-from unified_finance_mcp.errors import AuthError
+from unified_finance_mcp.errors import AuthError, UpstreamDrift
 from unified_finance_mcp.providers import build_providers
 from unified_finance_mcp.tools import edgar as edgar_mod
 
@@ -126,3 +126,17 @@ async def test_unknown_explicit_source_is_tool_error():
     tool = _register(providers)
     out = await tool("320193", source="nope")
     assert "error" in out and "unknown source" in out["error"]
+
+
+async def test_provider_drift_surfaces_contact_admin_action():
+    """A schema break must reach the model as an admin escalation, not as a
+    generic 'unavailable' that invites a pointless retry."""
+    providers = build_providers(get_settings())
+    providers["edgar"].submissions = AsyncMock(
+        side_effect=UpstreamDrift("edgar: non-JSON body from data.sec.gov"))
+    _set_available(providers, ("edgar",))
+    tool = _register(providers)
+    out = await tool("320193")
+    assert out["action"] == "contact_admin"
+    assert out["drifted_sources"] == ["edgar"]
+    assert "联系管理员" in out["hint"]

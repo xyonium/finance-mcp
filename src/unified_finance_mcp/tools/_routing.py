@@ -24,6 +24,15 @@ def _classify(e: Exception) -> str:
     return f"{getattr(e, 'kind', 'error')}: {str(e)[:200]}"
 
 
+_DRIFT_HINT = ("上游返回的结构与适配层预期不符（疑似接口漂移，不是网络/限流问题，"
+               "重试通常无效）。请告知用户：联系管理员核查该源的 provider 适配层。")
+
+
+def _drift_sources(source_errors: dict[str, str]) -> list[str]:
+    return [name for name, msg in source_errors.items()
+            if msg.startswith("upstream_drift:")]
+
+
 async def route_and_call(*, market: str, chain: list[str],
                          providers: dict[str, Provider],
                          call: Callable[[Provider], Awaitable[dict]],
@@ -42,7 +51,11 @@ async def route_and_call(*, market: str, chain: list[str],
         try:
             return await call(p)
         except Exception as e:  # noqa: BLE001
-            return tool_error(_classify(e), source=explicit_source)
+            out = tool_error(_classify(e), source=explicit_source)
+            if getattr(e, "kind", "") == "upstream_drift":
+                out.update(hint=_DRIFT_HINT, action="contact_admin",
+                           drifted_sources=[explicit_source])
+            return out
     candidates = [providers[n] for n in chain
                   if n in providers and providers[n].available() and providers[n].covers(market)]
     if not candidates:
@@ -58,5 +71,9 @@ async def route_and_call(*, market: str, chain: list[str],
             return await call(p)
         except Exception as e:  # noqa: BLE001
             source_errors[p.name] = _classify(e)
-    return tool_error("all candidate sources failed", source_errors=source_errors,
-                      market=market)
+    extra: dict = {"source_errors": source_errors, "market": market}
+    drifted = _drift_sources(source_errors)
+    if drifted:
+        extra.update(hint=_DRIFT_HINT, action="contact_admin",
+                     drifted_sources=drifted)
+    return tool_error("all candidate sources failed", **extra)
