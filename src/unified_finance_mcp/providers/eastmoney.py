@@ -35,7 +35,7 @@ fields the endpoint actually returned; no interpolation, no derived rows.
 from __future__ import annotations
 
 from ..config import Settings
-from ..errors import NotFound, ProviderError, UpstreamError
+from ..errors import NotFound, ProviderError, UpstreamDrift, UpstreamError
 from ..http import PoliteClient
 from ..symbols import ParsedSymbol
 from .base import Provider
@@ -146,7 +146,7 @@ class EastmoneyProvider(Provider):
             raise NotFound(f"eastmoney: empty data (rc={rc}) from {url}")
         payload = data["data"]
         if not isinstance(payload, dict):
-            raise UpstreamError(f"eastmoney: unexpected data shape from {url}")
+            raise UpstreamDrift(f"eastmoney: unexpected data shape from {url}")
         return payload
 
     async def quote(self, parsed: ParsedSymbol) -> dict:

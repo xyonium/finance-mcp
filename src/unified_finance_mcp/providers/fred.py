@@ -21,7 +21,7 @@ spelling; no interpolation, no gap-filling, no re-basing.
 from __future__ import annotations
 
 from ..config import Settings
-from ..errors import AuthError, NotFound, RateLimited, UpstreamError, scrub
+from ..errors import AuthError, NotFound, RateLimited, UpstreamDrift, UpstreamError, scrub
 from ..http import PoliteClient
 from .base import Provider
 
@@ -88,8 +88,8 @@ class FredProvider(Provider):
             raise UpstreamError(f"fred: non-JSON body from "
                                 f"{scrub(url, key)}") from e
         if not isinstance(data, dict):
-            raise UpstreamError(f"fred: unexpected {type(data).__name__} body "
-                                f"from {scrub(url, key)}")
+            raise UpstreamDrift(f"fred: unexpected {type(data).__name__} body "
+                              f"from {scrub(url, key)}")
         err = data.get("error_message")
         if err:
             code = data.get("error_code")

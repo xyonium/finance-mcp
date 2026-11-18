@@ -26,7 +26,7 @@ import anyio
 from tradingview_ta import Interval, TA_Handler
 
 from ..config import Settings
-from ..errors import AuthError, NotFound, ProviderError, UpstreamError
+from ..errors import AuthError, NotFound, ProviderError, UpstreamDrift, UpstreamError
 from ..http import PoliteClient
 from .base import Provider
 
@@ -328,7 +328,7 @@ class CexProvider(Provider):
         if isinstance(rows, dict):  # mexc columnar body, not a row list
             rows = CexProvider._rows_from_columnar(rows)
         if not isinstance(rows, list):
-            raise UpstreamError(f"cex: unexpected candles shape from {ex}")
+            raise UpstreamDrift(f"cex: unexpected candles shape from {ex}")
         out = []
         for r in rows:
             if isinstance(r, dict):  # gate (and mexc, post-zip): {t,o,h,l,c,v}

@@ -13,7 +13,7 @@ from unified_finance_mcp.config import (
     DEFAULT_WB_BASE_URL,
     get_settings,
 )
-from unified_finance_mcp.errors import NotFound, ProviderError, UpstreamDrift
+from unified_finance_mcp.errors import NotFound, ProviderError, UpstreamDrift, UpstreamError
 from unified_finance_mcp.providers import build_providers
 from unified_finance_mcp.providers.macro import MACRO_INDICATORS, MacroProvider
 
@@ -311,7 +311,7 @@ async def test_world_bank_series_non_json_body_is_upstream_error(monkeypatch):
     """HTTP 200 HTML must map to the taxonomy, not leak ValueError."""
     respx.get(CHN_GDP).respond(200, text="<html>maintenance</html>")
     p = make_provider(monkeypatch)
-    with pytest.raises(UpstreamDrift) as ei:
+    with pytest.raises(UpstreamError) as ei:
         await p.world_bank_series("NY.GDP.MKTP.CD", "CHN", 2000, 2024)
     assert "non-JSON" in str(ei.value)
 
@@ -320,7 +320,7 @@ async def test_world_bank_series_non_json_body_is_upstream_error(monkeypatch):
 async def test_economic_drift_survives_a_later_not_found(monkeypatch):
     """FRED schema break + keyless WB 'no data' must surface the drift, not
     the misleading NotFound (the fallback must not hide a broken adapter)."""
-    respx.get(FRED).respond(200, text="<html>maintenance</html>")
+    respx.get(FRED).respond(200, json=[])  # parsed JSON, wrong shape -> drift
     respx.get(f"{WB}/NY.GDP.MKTP.CD").respond(200, json=wb_body([]))
     respx.get(f"{IMF}/NGDP_RPCH/WLD").respond(404, text="no")
     p = make_provider(monkeypatch, fred_key="test-key")

@@ -12,7 +12,7 @@ from unified_finance_mcp.config import (
     DEFAULT_SEC_TICKERS_URL,
     get_settings,
 )
-from unified_finance_mcp.errors import AuthError, NotFound, UpstreamDrift
+from unified_finance_mcp.errors import AuthError, NotFound, UpstreamError
 from unified_finance_mcp.providers.edgar import EdgarProvider, normalize_cik
 
 SUB_URL = f"{DEFAULT_EDGAR_BASE_URL}/submissions/CIK0000320193.json"
@@ -220,5 +220,5 @@ async def test_facts_all_missing_is_not_found(monkeypatch):
 async def test_non_json_body_is_upstream_error(monkeypatch):
     respx.get(SUB_URL).respond(200, text="<html>maintenance</html>")
     p = make_provider(monkeypatch)
-    with pytest.raises(UpstreamDrift, match="non-JSON"):
+    with pytest.raises(UpstreamError, match="non-JSON"):
         await p.submissions("320193")

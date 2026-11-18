@@ -121,7 +121,7 @@ class EdgarProvider(Provider):
         try:
             return resp.json()
         except ValueError as e:
-            raise UpstreamDrift(f"edgar: non-JSON body from {host}") from e
+            raise UpstreamError(f"edgar: non-JSON body from {host}") from e
 
     async def _tickers_map(self) -> dict[str, str]:
         now = time.monotonic()

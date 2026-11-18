@@ -18,7 +18,7 @@ import json
 from datetime import date
 
 from ..config import DEFAULT_AV_BASE_URL, Settings
-from ..errors import NotFound, ProviderError, RateLimited, UpstreamError, scrub
+from ..errors import NotFound, ProviderError, RateLimited, UpstreamDrift, UpstreamError, scrub
 from ..http import PoliteClient
 from ..symbols import ParsedSymbol
 from .base import Provider
@@ -174,8 +174,8 @@ class AlphaVantageProvider(Provider):
             raise UpstreamError(f"alphavantage: non-JSON body from "
                                 f"{scrub(url, self._apikey)}") from e
         if not isinstance(data, dict):
-            raise UpstreamError(f"alphavantage: unexpected {type(data).__name__} body "
-                                f"from {scrub(url, self._apikey)}")
+            raise UpstreamDrift(f"alphavantage: unexpected {type(data).__name__} body "
+                              f"from {scrub(url, self._apikey)}")
         note = data.get("Note") or data.get("Information")
         if note:
             raise RateLimited(f"alphavantage: {scrub(str(note)[:200], self._apikey)} "
@@ -353,7 +353,7 @@ class AlphaVantageProvider(Provider):
             if data.get("Error Message"):
                 raise NotFound("alphavantage: "
                                f"{scrub(str(data['Error Message'])[:200], self._apikey)}")
-            raise NotFound(f"alphavantage: unexpected body from {scrub(url, self._apikey)}")
+            raise UpstreamDrift(f"alphavantage: unexpected body from {scrub(url, self._apikey)}")
         reader = csv.DictReader(io.StringIO(text))
         rows = list(reader)
         if not rows or reader.fieldnames is None:

@@ -160,7 +160,7 @@ class MacroProvider(Provider):
         except UpstreamError as e:
             raise UpstreamError(f"macro/world_bank: {e}") from e
         except ValueError as e:
-            raise UpstreamDrift("macro/world_bank: non-JSON body") from e
+            raise UpstreamError("macro/world_bank: non-JSON body") from e
         # WB answers /indicator/{code} with [meta, rows]; an unknown code
         # returns [meta, []] (200) — both handled below. A non-list body is a
         # gateway problem, not a "no data" answer.
@@ -198,10 +198,10 @@ class MacroProvider(Provider):
             raise UpstreamError(scrub(f"macro/fred: {e}", key)) from e
         except ValueError as e:
             # 200 with a non-JSON body must not escape as raw JSONDecodeError.
-            raise UpstreamDrift(f"macro/fred: non-JSON body from "
+            raise UpstreamError(f"macro/fred: non-JSON body from "
                                 f"{scrub(url, key)}") from e
         if not isinstance(data, dict):
-            raise UpstreamError(f"macro/fred: unexpected "
+            raise UpstreamDrift(f"macro/fred: unexpected "
                                 f"{type(data).__name__} body from {scrub(url, key)}")
         # FRED signals auth/quota problems as HTTP 200 + error_code body.
         err = data.get("error_message")
@@ -229,7 +229,7 @@ class MacroProvider(Provider):
         except UpstreamError as e:
             raise UpstreamError(f"macro/imf: {e}") from e
         except ValueError as e:
-            raise UpstreamDrift("macro/imf: non-JSON body") from e
+            raise UpstreamError("macro/imf: non-JSON body") from e
         if not isinstance(data, dict):
             raise UpstreamDrift(f"macro/imf: unexpected body from {url}")
         series = ((data.get("values") or {}).get(indicator) or {}).get(_WB_COUNTRY)

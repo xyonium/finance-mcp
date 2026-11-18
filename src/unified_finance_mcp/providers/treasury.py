@@ -178,7 +178,7 @@ class TreasuryProvider(Provider):
         except ValueError as e:
             # 200 with a non-JSON body must not escape as a raw ValueError;
             # the provider contract is the errors.py taxonomy.
-            raise UpstreamDrift(f"treasury/{kind}: non-JSON body") from e
+            raise UpstreamError(f"treasury/{kind}: non-JSON body") from e
         if not isinstance(data, dict):
             raise UpstreamDrift(f"treasury/{kind}: unexpected body")
         rows = data.get("data")
