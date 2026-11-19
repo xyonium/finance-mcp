@@ -46,6 +46,7 @@ the upstream spelling (WB/FRED yearly "2025", monthly "2025-01").
 from __future__ import annotations
 
 import json
+import re
 
 from ..config import Settings
 from ..errors import (
@@ -89,6 +90,11 @@ _WB_PER_PAGE = 200
 
 _RATE_LIMIT_HINT = ("fred 429 (120 req/min limit); back off or rely on the "
                     "world_bank fallback in this provider")
+
+# BLS: ids are short alphanumerics; only M01-M12 is a monthly observation.
+_BLS_ID_RE = re.compile(r"^[A-Za-z0-9]{1,40}$")
+_BLS_MONTH_RE = re.compile(r"^M(0[1-9]|1[0-2])$")
+_BLS_YEAR_RE = re.compile(r"^\d{4}$")
 
 
 def _wb_row(raw: dict) -> dict:
@@ -219,7 +225,28 @@ class MacroProvider(Provider):
     # ── bls via jina reader (keyless; this egress is 403'd directly) ───────
 
     @staticmethod
-    def _bls_rows(data: object, series_id: str) -> list[dict]:
+    def _bls_value(raw: object, series_id: str, strict: bool) -> float | None:
+        """BLS value cell. "-"/"" is BLS's missing marker (kept as None).
+
+        In strict mode (the generic BLS:<id> passthrough) any OTHER
+        non-numeric text is drift — a whole non-numeric series must not turn
+        into a successful list of nulls. In lenient mode (canonical backup)
+        it degrades to None, which is the pre-existing behaviour.
+        """
+        text = str(raw or "").strip()
+        if text in ("", "-"):
+            return None
+        try:
+            return float(text.replace(",", ""))
+        except ValueError:
+            if strict:
+                raise UpstreamDrift(f"macro/bls: non-numeric value {text!r} "
+                                    f"for {series_id}")
+            return None
+
+    @classmethod
+    def _bls_rows(cls, data: object, series_id: str,
+                  strict: bool = False) -> list[dict]:
         """BLS body -> [{date, value}]. `M13` is BLS's annual average."""
         if not isinstance(data, dict):
             raise UpstreamDrift(f"macro/bls: unexpected "
@@ -234,21 +261,38 @@ class MacroProvider(Provider):
         series = (data.get("Results") or {}).get("series") or []
         if not isinstance(series, list) or not series:
             raise NotFound(f"macro/bls: no series for {series_id}")
+        got = str(series[0].get("seriesID") or "").strip()
+        if got and got.upper() != series_id.upper():
+            raise UpstreamDrift(f"macro/bls: asked {series_id} but BLS returned "
+                                f"{got}")
+        if not got and strict:
+            raise UpstreamDrift(f"macro/bls: response carries no seriesID "
+                                f"for {series_id}")
         rows = []
         for point in series[0].get("data") or []:
             if not isinstance(point, dict):
+                if strict:
+                    raise UpstreamDrift(f"macro/bls: non-object observation "
+                                        f"for {series_id}")
                 continue
             year = str(point.get("year") or "")
             period = str(point.get("period") or "")
-            if len(year) != 4 or not period.startswith("M") or period == "M13":
-                continue  # annual average / non-monthly rows are not a month
-            rows.append({"date": f"{year}-{period[1:].zfill(2)}",
-                         "value": _num(point.get("value"))})
+            if period == "M13":
+                continue  # BLS annual average: not a month
+            if not _BLS_YEAR_RE.match(year) or not _BLS_MONTH_RE.match(period):
+                if strict:
+                    raise UpstreamDrift(f"macro/bls: unexpected period "
+                                        f"{year}-{period} for {series_id}")
+                continue
+            rows.append({"date": f"{year}-{period[1:]}",
+                         "value": cls._bls_value(point.get("value"),
+                                                 series_id, strict)})
         if not rows:
             raise NotFound(f"macro/bls: no monthly rows for {series_id}")
         return rows
 
-    async def _bls_http(self, series_id: str) -> list[dict]:
+    async def _bls_http(self, series_id: str,
+                        strict: bool = False) -> list[dict]:
         """Direct BLS GET through BLS_PROXY_URL (a US egress passes Akamai)."""
         url = (f"{self.settings.bls_base_url.rstrip('/')}"
                f"/timeseries/data/{series_id}")
@@ -258,9 +302,9 @@ class MacroProvider(Provider):
             raise UpstreamError(f"macro/bls: {e}") from e
         except ValueError as e:
             raise UpstreamError("macro/bls: non-JSON body") from e
-        return self._bls_rows(data, series_id)
+        return self._bls_rows(data, series_id, strict)
 
-    async def _bls(self, series_id: str) -> list[dict]:
+    async def _bls(self, series_id: str, strict: bool = False) -> list[dict]:
         """BLS monthly series: proxy first when configured, else the reader.
 
         Direct api.bls.gov is 403 from the default (London) egress but 200
@@ -270,7 +314,7 @@ class MacroProvider(Provider):
         """
         if (self.settings.bls_proxy_url or "").strip():
             try:
-                return await self._bls_http(series_id)
+                return await self._bls_http(series_id, strict)
             except (AuthError, UpstreamError):
                 pass  # proxy down/refused: keep the backup alive via the reader
         url = (f"{self.settings.bls_base_url.rstrip('/')}"
@@ -281,7 +325,20 @@ class MacroProvider(Provider):
         except ValueError as e:
             raise UpstreamDrift(f"macro/bls: non-JSON reader body for "
                                 f"{series_id}") from e
-        return self._bls_rows(data, series_id)
+        return self._bls_rows(data, series_id, strict)
+
+    async def bls_series(self, series_id: str) -> list[dict]:
+        """Any BLS series id with **monthly** observations (generic passthrough).
+
+        Used by `get_economic_data("BLS:<id>")` to reach JOLTS/PPI/etc. that
+        FRED only carries in aggregate. Strict parsing: a malformed period,
+        a mismatched returned seriesID or a non-numeric value is drift, not a
+        silent null. Non-monthly series (e.g. OES annual) end as NotFound.
+        """
+        sid = (series_id or "").strip().upper()
+        if not _BLS_ID_RE.match(sid):
+            raise NotFound(f"macro/bls: invalid series id {series_id!r}")
+        return await self._bls(sid, strict=True)
 
     # ── fred (free registration key) ───────────────────────────────────────
 

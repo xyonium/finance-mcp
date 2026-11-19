@@ -204,3 +204,127 @@ async def test_fiscal_rejects_impossible_date_from(monkeypatch):
     p = make_provider(monkeypatch)
     with pytest.raises(NotFound, match="real"):
         await p.fiscal("debt_to_penny", date_from="2026-02-31")
+
+
+# ── MTS outlays by agency/function (table 5) ────────────────────────────────
+
+MTS_URL = f"{DEFAULT_TREASURY_FISCAL_BASE_URL}/v1/accounting/mts/mts_table_5"
+MTS_LATEST = {"data": [{"record_date": "2026-10-31"}],
+              "meta": {"total-count": 1}}
+MTS_ROWS = {
+    "data": [
+        {"record_date": "2026-10-31", "classification_id": "1",
+         "parent_id": "0", "line_code_nbr": "1",
+         "classification_desc": "Total Outlays",
+         "current_month_gross_outly_amt": "835147029099.80",
+         "current_fytd_gross_outly_amt": "835147029099.80"},
+        {"record_date": "2026-10-31", "classification_id": "2",
+         "parent_id": "1", "line_code_nbr": "2",
+         "classification_desc": "Zero Line",
+         "current_month_gross_outly_amt": "0.00"},
+        {"record_date": "2026-10-31", "classification_id": "3",
+         "parent_id": "1", "line_code_nbr": "3",
+         "classification_desc": "Negative Line",
+         "current_month_gross_outly_amt": "-5.00"},
+        {"record_date": "2026-10-31", "classification_id": "4",
+         "parent_id": "1", "line_code_nbr": "4",
+         "classification_desc": "Blank Line",
+         "current_month_gross_outly_amt": None},
+    ],
+    "meta": {"total-count": 4},
+}
+
+
+def _mts_routes(monkeypatch, rows=MTS_ROWS, latest=MTS_LATEST):
+    respx.get(MTS_URL, params={"sort": "-record_date",
+                               "page[size]": "1"}).respond(200, json=latest)
+    respx.get(MTS_URL, params={"filter": "record_date:eq:2026-10-31",
+                               "page[size]": "1000"}).respond(200, json=rows)
+    return make_provider(monkeypatch)
+
+
+@respx.mock
+async def test_mts_outlays_latest_month_keeps_amounts_as_strings(monkeypatch):
+    p = _mts_routes(monkeypatch)
+    out = await p.mts_outlays()
+    assert out["period"] == "2026-10" and out["record_date"] == "2026-10-31"
+    assert out["total"] == 4 and out["count"] == 4 and out["truncated"] is False
+    # descending by amount; blank sorts last; strings are NOT converted
+    assert [r["classification_desc"] for r in out["data"]] == [
+        "Total Outlays", "Zero Line", "Negative Line", "Blank Line"]
+    assert out["data"][0]["current_month_gross_outly_amt"] == "835147029099.80"
+    assert out["data"][1]["current_month_gross_outly_amt"] == "0.00"
+    assert out["data"][2]["current_month_gross_outly_amt"] == "-5.00"
+    assert out["data"][3]["current_month_gross_outly_amt"] is None
+    assert out["data"][0]["classification_id"] == "1"  # hierarchy retained
+    assert out["data"][0]["parent_id"] == "0"
+
+
+@respx.mock
+async def test_mts_outlays_limit_is_visible_and_truncated(monkeypatch):
+    p = _mts_routes(monkeypatch)
+    out = await p.mts_outlays(limit=2)
+    assert out["limit"] == 2 and out["count"] == 2
+    assert out["total"] == 4 and out["truncated"] is True
+
+
+@respx.mock
+async def test_mts_outlays_period_uses_real_month_end(monkeypatch):
+    respx.get(MTS_URL, params={"filter": "record_date:eq:2026-02-28",
+                               "page[size]": "1000"}).respond(200, json=MTS_ROWS)
+    p = make_provider(monkeypatch)
+    out = await p.mts_outlays(period="2026-02")
+    assert out["record_date"] == "2026-02-28"
+    assert respx.calls[0].request.url.params["filter"] == \
+        "record_date:eq:2026-02-28"  # no latest-month lookup
+
+
+async def test_mts_outlays_bad_period_is_not_found(monkeypatch):
+    p = make_provider(monkeypatch)
+    for period in ("2026-13", "2026-1", "10-2026"):
+        with pytest.raises(NotFound, match="YYYY-MM"):
+            await p.mts_outlays(period=period)
+
+
+@respx.mock
+async def test_mts_outlays_malformed_latest_date_is_drift(monkeypatch):
+    respx.get(MTS_URL, params={"sort": "-record_date",
+                               "page[size]": "1"}).respond(
+        200, json={"data": [{"record_date": "October 2026"}],
+                   "meta": {"total-count": 1}})
+    p = make_provider(monkeypatch)
+    with pytest.raises(UpstreamDrift, match="latest"):
+        await p.mts_outlays()
+
+
+@respx.mock
+async def test_mts_outlays_missing_total_count_is_drift(monkeypatch):
+    bad = dict(MTS_ROWS, meta={"count": 4})
+    p = _mts_routes(monkeypatch, rows=bad)
+    with pytest.raises(UpstreamDrift, match="total-count"):
+        await p.mts_outlays()
+
+
+@respx.mock
+async def test_mts_outlays_malformed_row_is_drift(monkeypatch):
+    bad = {"data": [{"record_date": "2026-10-31"}], "meta": {"total-count": 1}}
+    p = _mts_routes(monkeypatch, rows=bad)
+    with pytest.raises(UpstreamDrift, match="malformed"):
+        await p.mts_outlays()
+
+
+@respx.mock
+async def test_mts_outlays_empty_rows_is_not_found(monkeypatch):
+    p = _mts_routes(monkeypatch, rows={"data": [], "meta": {"total-count": 0}})
+    with pytest.raises(NotFound, match="no outlay rows"):
+        await p.mts_outlays()
+
+
+@respx.mock
+async def test_mts_outlays_non_json_is_upstream_error(monkeypatch):
+    respx.get(MTS_URL, params={"sort": "-record_date",
+                               "page[size]": "1"}).respond(
+        200, text="<html>maintenance</html>")
+    p = make_provider(monkeypatch)
+    with pytest.raises(UpstreamError, match="non-JSON"):
+        await p.mts_outlays()

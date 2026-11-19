@@ -95,3 +95,15 @@
 - 结论：Akamai 拦的是**具体 IP/区域**，不是整个 ASN。于是 BLS 改成 **proxy 优先、reader 兜底**：`BLS_PROXY_URL` 设置后走直连+代理，失败再回退 `r.jina.ai`。
 
 **教训**：判断"某源被墙"必须用**服务进程自己的网络环境**（容器 env、进程 env）做 direct vs proxy 对照，不能拿 host 默认出口的 IP 推断；用户说"按域名分流"时，分流可能只在别处生效。
+
+
+### 2026-11-19 审计推翻两处判断：MTS 与 BLS 明细
+
+独立审计（Argon）指出"FRED 已覆盖"不能作为否掉**明细**数据的理由——聚合口径与原始明细回答的是不同问题。复核后接受，并落成两个词表（都不新增工具、不需要 key）：
+
+- `TREASURY_MTS_OUTLAYS`：MTS `table_5`，单月 780 行（含 Total/Total-- 层级行），按当月 gross outlays 降序取前 50；金额保持上游字符串、保留 `classification_id`/`parent_id`/`line_code_nbr`，返回 `total`/`count`/`truncated`。**层级行不可相加**。
+- `BLS:<seriesId>`：任意 BLS **月度**序列透传（JOLTS/PPI 等），严格解析（只认 M01–M12、seriesID 回显、非数字值报 drift）；年度产品（OES）返回 not_found。v1 约 25 查询/日，按需使用。
+
+仍然不做（审计也同意或我维持）：ECB（日频欧元区曲线是真增量但受众小众）、Eurostat（与 FRED 重叠 + JSON-stat 成本）、Treasury `rates_of_exchange`（会计换算率，金融问法极少）、Census/Data Commons/OECD/WHO/Fed 原生/BEA。
+
+**教训**：否掉一个源之前，先问"它服务的是聚合问题还是明细问题"；"上游已覆盖"只在同一粒度上成立。

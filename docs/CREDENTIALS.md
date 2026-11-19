@@ -44,7 +44,9 @@ ToS：this product uses the FRED® API but is not endorsed or certified by the F
 1. **推荐**：`BLS_PROXY_URL=http://<us-proxy>:<port>` —— 只给 BLS 走这个代理，其它 provider 不受影响。
 2. 没有代理时自动走 `r.jina.ai`（`JINA_READER_URL`，keyless ~20 RPM）。可选 `JINA_API_KEY`（<https://jina.ai/keys/>，免费月度配额）提到 500 RPM。
 
-两条都**不需要 BLS key**。注意 BLS keyless GET 是 v1 单序列接口，适合备份而非高频主路径；停用 reader 用 `JINA_READER_URL=`。
+两条都**不需要 BLS key**。BLS keyless GET 是 v1 单序列接口，适合备份而非高频主路径；停用 reader 用 `JINA_READER_URL=`。
+
+**任意 BLS 月度序列**：`get_economic_data("BLS:JTS000000000000000JOL")` 这类透传解锁 JOLTS/PPI 等 FRED 只有聚合口径的明细。只支持月度观测（OES 等年度产品会返回 not_found）；id 必须来自 BLS 官方文档，禁臆造。v1 约 25 查询/日，按需查询，不要当批量下载用。
 
 ### 4. Kimi Datasource（三选一）
 

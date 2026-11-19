@@ -24,13 +24,15 @@ FRED = f"{DEFAULT_FRED_BASE_URL}/series/observations"
 IMF = "https://www.imf.org/external/datamapper/api/v1"
 
 
-def make_provider(monkeypatch, fred_key=None, bls_proxy=None):
+def make_provider(monkeypatch, fred_key=None, bls_proxy=None, jina_url=None):
     monkeypatch.setenv("FINANCE_MCP_MIN_HOST_DELAY", "0")
     monkeypatch.delenv("FRED_API_KEY", raising=False)
     if fred_key:
         monkeypatch.setenv("FRED_API_KEY", fred_key)
     monkeypatch.delenv("WORLD_BANK_BASE_URL", raising=False)
     monkeypatch.delenv("JINA_READER_URL", raising=False)
+    if jina_url is not None:
+        monkeypatch.setenv("JINA_READER_URL", jina_url)
     monkeypatch.delenv("JINA_API_KEY", raising=False)
     monkeypatch.delenv("BLS_BASE_URL", raising=False)
     monkeypatch.delenv("BLS_PROXY_URL", raising=False)
@@ -426,7 +428,7 @@ async def test_bls_prefers_proxy_when_configured(monkeypatch):
     p._bls_http = AsyncMock(return_value=[{"date": "2026-10", "value": 4.1}])
     rows = await p._bls("LNS14000000")
     assert rows == [{"date": "2026-10", "value": 4.1}]
-    p._bls_http.assert_awaited_once_with("LNS14000000")
+    p._bls_http.assert_awaited_once_with("LNS14000000", False)
 
 
 @respx.mock
@@ -439,3 +441,79 @@ async def test_bls_proxy_failure_falls_back_to_reader(monkeypatch):
     rows = await p._bls("LNS14000000")
     assert rows[0] == {"date": "2026-10", "value": 4.1}
     assert respx.calls  # the reader was actually used
+
+
+# ── generic BLS:<seriesId> passthrough (strict monthly parsing) ─────────────
+
+def bls_body(series_id, points, status="REQUEST_SUCCEEDED"):
+    return {"status": status, "message": [],
+            "Results": {"series": [{"seriesID": series_id, "data": points}]}}
+
+
+async def test_bls_series_uppercases_and_delegates(monkeypatch):
+    from unittest.mock import AsyncMock
+    p = make_provider(monkeypatch)
+    p._bls = AsyncMock(return_value=[{"date": "2026-09", "value": 7523.0}])
+    rows = await p.bls_series("jts000000000000000jol")
+    assert rows == [{"date": "2026-09", "value": 7523.0}]
+    call = p._bls.await_args
+    assert call.args[0] == "JTS000000000000000JOL" and call.kwargs["strict"] is True
+
+
+@pytest.mark.parametrize("bad", ["", "   ", "BLS!", "JTS/../x", "A" * 41])
+async def test_bls_series_rejects_invalid_id(monkeypatch, bad):
+    p = make_provider(monkeypatch)
+    with pytest.raises(NotFound, match="invalid series id"):
+        await p.bls_series(bad)
+
+
+def test_bls_strict_parser_accepts_missing_marker_as_none():
+    body = bls_body("X1", [
+        {"year": "2026", "period": "M09", "value": "-"},
+        {"year": "2026", "period": "M08", "value": "1,234.5"},
+    ])
+    rows = MacroProvider._bls_rows(body, "X1", strict=True)
+    assert rows == [{"date": "2026-09", "value": None},
+                    {"date": "2026-08", "value": 1234.5}]
+
+
+@pytest.mark.parametrize("point", [
+    {"year": "2026", "period": "M00", "value": "1"},
+    {"year": "2026", "period": "M99", "value": "1"},
+    {"year": "26", "period": "M09", "value": "1"},
+])
+def test_bls_strict_parser_rejects_malformed_periods(point):
+    body = bls_body("X1", [point])
+    with pytest.raises(UpstreamDrift, match="unexpected period"):
+        MacroProvider._bls_rows(body, "X1", strict=True)
+
+
+def test_bls_strict_parser_rejects_series_id_mismatch():
+    body = bls_body("OTHER", [{"year": "2026", "period": "M09", "value": "1"}])
+    with pytest.raises(UpstreamDrift, match="asked X1 but BLS returned OTHER"):
+        MacroProvider._bls_rows(body, "X1", strict=True)
+
+
+def test_bls_strict_parser_rejects_nonnumeric_value():
+    body = bls_body("X1", [{"year": "2026", "period": "M09", "value": "N/A"}])
+    with pytest.raises(UpstreamDrift, match="non-numeric"):
+        MacroProvider._bls_rows(body, "X1", strict=True)
+
+
+def test_bls_lenient_parser_keeps_pre_existing_none_behaviour():
+    """Canonical backup path (lenient) still degrades unknown text to None."""
+    body = bls_body("X1", [{"year": "2026", "period": "M09", "value": "N/A"}])
+    assert MacroProvider._bls_rows(body, "X1") == [{"date": "2026-09", "value": None}]
+
+
+def test_bls_annual_average_dropped_and_annual_only_is_not_found():
+    annual = bls_body("X1", [{"year": "2026", "period": "M13", "value": "4.2"}])
+    with pytest.raises(NotFound, match="no monthly rows"):
+        MacroProvider._bls_rows(annual, "X1", strict=True)
+
+
+@respx.mock
+async def test_bls_series_reader_disabled_is_not_found(monkeypatch):
+    p = make_provider(monkeypatch, jina_url="")
+    with pytest.raises(NotFound, match="disabled"):
+        await p.bls_series("LNS14000000")

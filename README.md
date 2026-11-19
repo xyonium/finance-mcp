@@ -41,7 +41,7 @@ model calls one tool, not four.
 **Data sources:** Yahoo Finance · TradingView · FMP · Alpha Vantage · marketaux ·
 Bitget / Gate / MEXC (USDT-settled perpetuals, public REST — OKX/Binance quotes
 via TradingView) · Futu OpenD · SEC EDGAR · US Treasury (par yield curve +
-Fiscal Data) · World Bank / IMF · BLS (via Jina Reader) · Kimi Datasource (tianyancha CN company data,
+Fiscal Data) · World Bank / IMF · BLS (monthly backup + `BLS:<seriesId>` detail) · Kimi Datasource (tianyancha CN company data,
 S&P Capital IQ, gildata screener data, and more).
 
 SEC EDGAR and the Treasury/Fiscal Data endpoints are **keyless**; SEC only
@@ -329,7 +329,7 @@ also removes the Python ≥3.14 wrapper constraint mcpo hit).
 | `run_screener` | Screen stocks by market and numeric filters, sorted and limited |
 | `get_ownership` | Major / institutional / mutual-fund holders, insider transactions & summary |
 | `get_events_calendar` | Earnings, dividends, IPO calendar (date range optional) |
-| `get_economic_data` | Macro series in three vocabularies: the 8 canonical indicators (GDP, CPI, unemployment, …), **any World Bank indicator code** (`NY.GDP.MKTP.CD` + `country`/`start`/`end`), or the US Treasury pseudo-indicators `TREASURY_YIELD_CURVE` (full 1Mo–30Y par curve, `period`=YYYY-MM) / `TREASURY_DEBT` / `TREASURY_AVG_INTEREST_RATE` |
+| `get_economic_data` | Macro series in three vocabularies: the 8 canonical indicators (GDP, CPI, unemployment, …), **any World Bank indicator code** (`NY.GDP.MKTP.CD` + `country`/`start`/`end`), or the US Treasury pseudo-indicators `TREASURY_YIELD_CURVE` (full 1Mo–30Y par curve, `period`=YYYY-MM) / `TREASURY_DEBT` / `TREASURY_AVG_INTEREST_RATE` / `TREASURY_MTS_OUTLAYS` |
 | `get_fred_series` / `search_fred_series` | Any FRED series by raw series_id + series search (needs `FRED_API_KEY`) |
 | `get_sec_filing` | SEC EDGAR by ticker or CIK: `kind=filings` (forms, dates, accession numbers, primary document) or `kind=facts` (as-reported XBRL concepts for a tag whitelist, each row carrying form/filed/accn). Keyless; set `SEC_EDGAR_USER_AGENT` |
 | `search_symbols` | Search symbols by company name or ticker |

@@ -39,6 +39,13 @@ def _stub(providers):
         side_effect=AssertionError("alphavantage must not be called"))
     providers["treasury"].yield_curve = AsyncMock(
         return_value={"period": "2026-11", "data": [{"date": "2026-11-17", "10Y": 5.1}]})
+    providers["macro"].bls_series = AsyncMock(
+        return_value=[{"date": "2026-09", "value": 7523.0}])
+    providers["treasury"].mts_outlays = AsyncMock(
+        return_value={"period": "2026-10", "record_date": "2026-10-31",
+                      "limit": 50, "total": 491, "count": 1,
+                      "truncated": True,
+                      "data": [{"classification_desc": "Total Outlays"}]})
     providers["treasury"].fiscal = AsyncMock(
         return_value={"kind": "debt_to_penny", "total": 10, "count": 1,
                       "data": [{"record_date": "2026-11-16"}]})
@@ -146,6 +153,8 @@ async def test_unknown_indicator_hint_names_all_three_vocabularies():
 
 async def test_treasury_avg_interest_rate_dispatches_to_its_dataset():
     providers = _stub(build_providers(get_settings()))
+    providers["macro"].bls_series = AsyncMock(
+        return_value=[{"date": "2026-09", "value": 7523.0}])
     providers["treasury"].fiscal = AsyncMock(
         return_value={"kind": "avg_interest_rates", "total": 1, "count": 1,
                       "data": [{"record_date": "2026-09-30",
@@ -155,3 +164,84 @@ async def test_treasury_avg_interest_rate_dispatches_to_its_dataset():
     assert out["indicator"] == "TREASURY_AVG_INTEREST_RATE"
     assert out["kind"] == "avg_interest_rates"
     providers["treasury"].fiscal.assert_awaited_once_with("avg_interest_rates")
+
+
+# ── BLS:<seriesId> passthrough (plan review follow-ups) ─────────────────────
+
+async def test_bls_prefix_is_case_insensitive_and_output_is_upper():
+    providers = _stub(build_providers(get_settings()))
+    providers["macro"].bls_series = AsyncMock(
+        return_value=[{"date": "2026-09", "value": 7523.0}])
+    tool = _register(providers)
+    out = await tool("bls:jts000000000000000jol")
+    assert out["indicator"] == "BLS:JTS000000000000000JOL"
+    assert out["series_id"] == "JTS000000000000000JOL"
+    assert out["data"] == [{"date": "2026-09", "value": 7523.0}]
+    providers["macro"].bls_series.assert_awaited_once_with("JTS000000000000000JOL")
+
+
+async def test_bls_invalid_id_is_rejected_before_provider_call():
+    providers = _stub(build_providers(get_settings()))
+    tool = _register(providers)
+    out = await tool("BLS:no spaces!")
+    assert "error" in out and "invalid BLS series id" in out["error"]
+    providers["macro"].bls_series.assert_not_called()
+
+
+async def test_bls_rejects_non_macro_source_before_provider_call():
+    providers = _stub(build_providers(get_settings()))
+    tool = _register(providers)
+    out = await tool("BLS:LNS14000000", source="treasury")
+    assert "error" in out and "BLS" in out["error"]
+    assert "auto, macro" in out["hint"]
+    providers["macro"].bls_series.assert_not_called()
+
+
+async def test_bls_rate_limited_propagates_as_error_dict():
+    from unified_finance_mcp.errors import RateLimited
+    providers = _stub(build_providers(get_settings()))
+    providers["macro"].bls_series = AsyncMock(
+        side_effect=RateLimited("macro/bls: daily threshold"))
+    tool = _register(providers)
+    out = await tool("BLS:LNS14000000")
+    assert "error" in out
+    assert out["source_errors"]["macro"].startswith("rate_limited:")
+
+
+async def test_bls_drift_escalates_to_contact_admin():
+    from unified_finance_mcp.errors import UpstreamDrift
+    providers = _stub(build_providers(get_settings()))
+    providers["macro"].bls_series = AsyncMock(
+        side_effect=UpstreamDrift("macro/bls: unexpected period 2026-M99"))
+    tool = _register(providers)
+    out = await tool("BLS:LNS14000000")
+    assert out["action"] == "contact_admin"
+    assert out["drifted_sources"] == ["macro"]
+
+
+async def test_unknown_indicator_hint_lists_bls_vocabulary():
+    providers = _stub(build_providers(get_settings()))
+    tool = _register(providers)
+    out = await tool("M2")
+    assert "BLS:" in out["hint"]
+
+
+async def test_treasury_mts_outlays_dispatches_with_period():
+    providers = _stub(build_providers(get_settings()))
+    tool = _register(providers)
+    out = await tool("TREASURY_MTS_OUTLAYS", period="2026-10")
+    assert out["indicator"] == "TREASURY_MTS_OUTLAYS"
+    assert out["period"] == "2026-10" and out["truncated"] is True
+    assert out["data"][0]["classification_desc"] == "Total Outlays"
+    providers["treasury"].mts_outlays.assert_awaited_once_with("2026-10")
+
+
+async def test_treasury_mts_outlays_drift_escalates():
+    from unified_finance_mcp.errors import UpstreamDrift
+    providers = _stub(build_providers(get_settings()))
+    providers["treasury"].mts_outlays = AsyncMock(
+        side_effect=UpstreamDrift("treasury/mts: malformed report row"))
+    tool = _register(providers)
+    out = await tool("TREASURY_MTS_OUTLAYS")
+    assert out["action"] == "contact_admin"
+    assert out["drifted_sources"] == ["treasury"]

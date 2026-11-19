@@ -19,8 +19,10 @@ Nothing here is a yield curve substitute: `avg_interest_rates` is the
 tool names keep that distinction visible.
 
 Verified 2026-11-18: both CSV and JSON endpoints 200; `/v1/accounting/od/
-monthly_treasury_statement` is **404** (the correct MTS tables live under
-`/v1/accounting/mts/mts_table_N`), so monthly statements are not offered.
+monthly_treasury_statement` is **404** — the correct MTS tables live under
+`/v1/accounting/mts/mts_table_N`. `mts_table_5` (outlays of the U.S.
+government, hierarchical agency/function lines) is exposed as
+`TREASURY_MTS_OUTLAYS`; tables 1/9 are not exposed.
 
 Anti-hallucination discipline: tenor values and fiscal amounts are exactly
 what the upstream returns (missing CSV cells -> None, never interpolated;
@@ -28,6 +30,7 @@ fiscal rows keep their upstream field names and string amounts unchanged).
 """
 from __future__ import annotations
 
+import calendar
 import csv
 import io
 import re
@@ -188,3 +191,95 @@ class TreasuryProvider(Provider):
         meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
         return {"kind": kind, "total": meta.get("total-count"),
                 "count": len(rows), "data": rows}
+
+    # ── MTS: outlays by agency/function (table 5) ───────────────────────────
+
+    _MTS_OUTLAYS = "/v1/accounting/mts/mts_table_5"
+
+    async def _mts_get(self, params: dict) -> dict:
+        url = (f"{self.settings.treasury_fiscal_base_url.rstrip('/')}"
+               f"{self._MTS_OUTLAYS}")
+        try:
+            data = await self._get_client().get_json(url, params=params)
+        except UpstreamError as e:
+            raise UpstreamError(f"treasury/mts: {e}") from e
+        except ValueError as e:
+            raise UpstreamError("treasury/mts: non-JSON body") from e
+        if not isinstance(data, dict):
+            raise UpstreamDrift("treasury/mts: unexpected body")
+        return data
+
+    async def mts_outlays(self, period: str | None = None,
+                          limit: int = 50) -> dict:
+        """Monthly Treasury Statement table 5: outlays by agency/function.
+
+        Report lines are **hierarchical**: the payload contains total and
+        subtotal lines (e.g. "Total Outlays", "Total--Department of ...")
+        next to agency lines, so summing them double-counts. Amounts are kept
+        as the upstream USD strings (nulls stay None); `truncated` says
+        whether `total` exceeds the returned `count`.
+
+        `period` is YYYY-MM (month-end record date); omitted means the newest
+        published month. One page of up to 1000 rows is fetched, sorted by
+        current-month gross outlays descending (nulls last), then capped.
+        """
+        n = max(1, min(int(limit), 200))
+        if period is not None:
+            m = _PERIOD_RE.match(period.strip())
+            if not m or not 1 <= int(m.group(2)) <= 12:
+                raise NotFound(f"treasury/mts: period must be YYYY-MM, "
+                               f"got {period!r}")
+            year, month = int(m.group(1)), int(m.group(2))
+            record_date = (f"{year:04d}-{month:02d}-"
+                           f"{calendar.monthrange(year, month)[1]:02d}")
+        else:
+            latest = await self._mts_get({"sort": "-record_date",
+                                          "page[size]": "1"})
+            latest_rows = latest.get("data")
+            if not isinstance(latest_rows, list) or not latest_rows:
+                raise NotFound("treasury/mts: no months published")
+            first = latest_rows[0]
+            if not isinstance(first, dict):
+                raise UpstreamDrift("treasury/mts: malformed latest-month row")
+            record_date = str(first.get("record_date") or "")
+            if not _DATE_RE.match(record_date):
+                raise UpstreamDrift("treasury/mts: unexpected latest "
+                                    f"record_date {record_date!r}")
+        data = await self._mts_get({"filter": f"record_date:eq:{record_date}",
+                                    "page[size]": "1000"})
+        rows = data.get("data")
+        if not isinstance(rows, list) or not rows:
+            raise NotFound(f"treasury/mts: no outlay rows for {record_date}")
+        meta = data.get("meta")
+        total = meta.get("total-count") if isinstance(meta, dict) else None
+        if not isinstance(total, int):
+            raise UpstreamDrift("treasury/mts: meta.total-count is not an integer")
+        out = []
+        for row in rows:
+            if not isinstance(row, dict) or not isinstance(
+                    row.get("classification_desc"), str):
+                raise UpstreamDrift("treasury/mts: malformed report row")
+            out.append({
+                "record_date": row.get("record_date"),
+                "classification_id": row.get("classification_id"),
+                "parent_id": row.get("parent_id"),
+                "line_code_nbr": row.get("line_code_nbr"),
+                "classification_desc": row["classification_desc"],
+                "current_month_gross_outly_amt":
+                    row.get("current_month_gross_outly_amt"),
+                "current_fytd_gross_outly_amt":
+                    row.get("current_fytd_gross_outly_amt"),
+            })
+
+        def _amount(r: dict) -> float:
+            raw = r["current_month_gross_outly_amt"]
+            try:
+                return float(str(raw).replace(",", ""))
+            except (TypeError, ValueError):
+                return float("-inf")  # null/blank lines sort last
+
+        out.sort(key=_amount, reverse=True)
+        kept = out[:n]
+        return {"period": record_date[:7], "record_date": record_date,
+                "limit": n, "total": total, "count": len(kept),
+                "truncated": total > len(kept), "data": kept}

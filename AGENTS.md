@@ -40,12 +40,12 @@ live smoke 不进 CI：手工跑，且每个会话最多 1-2 次真实调用（�
 - **不加载 `.env`**（无 dotenv 依赖）：key 只按需 `os.environ.get`；无 key 时 provider `available()` 为 False，auto 路由静默跳过；显式 `source=` 时返回"未配置"而不是假装空数据。
 - **版本只来自 git tag**（hatch-vcs）：不改 `pyproject.toml` 的 version。
 - 新增源必须同步 7 处：`providers/__init__.py`、`tools/__init__.py:ALL_MODULES`、`tools/diagnostics.py`（`UNIFIED_MODULES` + `MODULE_TOOLS`）、`server.py:INSTRUCTIONS`、README（工具表/配置/数据源）、`tests/test_invariants.py` 的工具计数、`docs/CREDENTIALS.md`。**漏一处 = `get_service_status` 与真实工具面 drift**（2026-11-18 修过一次 fred 漏报）。
-- **新源优先并入现有工具**（用户 2026-11-18 裁决）：能挂在现有工具上的不要新开工具。先例：SEC EDGAR → `get_sec_filing(kind=filings|facts)`；World Bank / US Treasury（`TREASURY_YIELD_CURVE`、`TREASURY_DEBT`、`TREASURY_AVG_INTEREST_RATE`）→ `get_economic_data` 的第三种词表。新增工具要先说明为什么现有容器装不下。
+- **新源优先并入现有工具**（用户 2026-11-18 裁决）：能挂在现有工具上的不要新开工具。先例：SEC EDGAR → `get_sec_filing(kind=filings|facts)`；World Bank / US Treasury（`TREASURY_YIELD_CURVE`、`TREASURY_DEBT`、`TREASURY_AVG_INTEREST_RATE`、`TREASURY_MTS_OUTLAYS`）/ BLS（`BLS:<seriesId>`）→ `get_economic_data` 的词表。新增工具要先说明为什么现有容器装不下。
 - 市场门控：provider 用 `markets=` 声明覆盖域（`None` = 全球）；`route_and_call` 按 `market` 过滤候选，再按 chain 顺序取第一个非空。
 
 ## 数据源与 key
 
-免 key：Yahoo、TradingView、Eastmoney、CEX 公共 REST、World Bank、IMF、US Treasury、**SEC EDGAR**（只要求声明 UA）、**BLS**（经 Jina Reader）。
+免 key：Yahoo、TradingView、Eastmoney、CEX 公共 REST、World Bank、IMF、US Treasury、**SEC EDGAR**（只要求声明 UA）、**BLS**（月度备份 + 任意月度序列，经 proxy/Jina）。
 
 需 key（全部免费档）：`FRED_API_KEY`（120 req/min）、`FMP_API_KEY`、`ALPHAVANTAGE_API_KEY`（免费档约 25 次/日，自动化测试一律 mock）、`MARKETAUX_API_TOKEN`、Kimi（proxy / token / auth-file 三选一）。
 

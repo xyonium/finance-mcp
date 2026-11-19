@@ -42,7 +42,7 @@ get_economic_data(indicator, source="auto", country="WLD", start=1980, end=2026,
 
 1. canonical 8（无点号，且在 `ECONOMIC_INDICATORS` 里）→ 原 chain `["macro","alphavantage"]`。
 2. World Bank code（**含点号**，如 `NY.GDP.MKTP.CD`）→ `macro.world_bank_series(code, country, start, end)`；chain `["macro"]`。
-3. Treasury 伪指标 `TREASURY_YIELD_CURVE` / `TREASURY_DEBT` / `TREASURY_AVG_INTEREST_RATE` → `treasury.yield_curve(period)` / `treasury.fiscal("debt_to_penny")` / `treasury.fiscal("avg_interest_rates")`；chain `["treasury"]`。
+3. Treasury 伪指标 `TREASURY_YIELD_CURVE` / `TREASURY_DEBT` / `TREASURY_AVG_INTEREST_RATE` / `TREASURY_MTS_OUTLAYS` → `treasury.yield_curve(period)` / `treasury.fiscal("debt_to_penny")` / `treasury.fiscal("avg_interest_rates")` / `treasury.mts_outlays(period)`；chain `["treasury"]`。
 
 `source` 按词表校验（WB 只接受 auto|macro，Treasury 只接受 auto|treasury），错配直接 `tool_error`，不产生 AttributeError envelope。
 
