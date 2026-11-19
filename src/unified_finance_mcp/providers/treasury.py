@@ -19,8 +19,8 @@ Nothing here is a yield curve substitute: `avg_interest_rates` is the
 tool names keep that distinction visible.
 
 Timeouts: the yield-curve CSV on home.treasury.gov has a ~19-20 s TTFB from
-some egresses, so this provider floors its client timeout at 45 s rather than
-the global 20 s default.
+some egresses, so that one request uses a 45 s per-request timeout with a
+single retry. Fiscal Data (and MTS) keep the global timeout/retry defaults.
 
 Verified 2026-11-18: both CSV and JSON endpoints 200; `/v1/accounting/od/
 monthly_treasury_statement` is **404** — the correct MTS tables live under
@@ -46,9 +46,12 @@ from ..http import PoliteClient
 from .base import Provider
 
 # home.treasury.gov answers the yield-curve CSV with ~19-20 s TTFB from some
-# egresses (measured 3/3 from the London host), which races the 20 s default
-# request timeout and turns every call into timeout+retry. Floor it.
-_TREASURY_TIMEOUT_FLOOR = 45.0
+# egresses (measured 3/3 from the London host), which raced the 20 s default
+# and timed out in the measured deployment. Scope the longer timeout to this
+# one request, with a single retry: two attempts cap the failure path at
+# ~91 s instead of 4x45 s, and Fiscal Data keeps the global defaults.
+_YIELD_CSV_TIMEOUT = 45.0
+_YIELD_CSV_RETRIES = 1
 
 _PERIOD_RE = re.compile(r"^(\d{4})-(\d{2})$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -100,8 +103,7 @@ class TreasuryProvider(Provider):
     def _get_client(self) -> PoliteClient:
         if self._client is None:
             self._client = PoliteClient(
-                timeout=max(self.settings.request_timeout,
-                            _TREASURY_TIMEOUT_FLOOR),
+                timeout=self.settings.request_timeout,
                 max_retries=self.settings.max_retries,
                 min_host_delay=self.settings.min_host_delay)
         return self._client
@@ -126,8 +128,10 @@ class TreasuryProvider(Provider):
             raise NotFound(f"treasury: period must be YYYY-MM, got {period!r}")
         url = f"{self.settings.treasury_yield_csv_url.rstrip('/')}/{ym.replace('-', '')}"
         try:
-            text = await self._get_client().get_text(url, params={
-                "type": "daily_treasury_yield_curve", "_format": "csv"})
+            text = await self._get_client().get_text(
+                url, params={"type": "daily_treasury_yield_curve",
+                             "_format": "csv"},
+                timeout=_YIELD_CSV_TIMEOUT, max_retries=_YIELD_CSV_RETRIES)
         except UpstreamError as e:
             raise UpstreamError(f"treasury/yield_curve: {e}") from e
         if not text.strip():

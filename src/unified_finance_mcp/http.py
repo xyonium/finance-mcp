@@ -52,17 +52,23 @@ class PoliteClient:
         return 0.5 * (2 ** attempt)
 
     async def get_response(self, url: str, params: dict | None = None,
-                           headers: dict | None = None) -> httpx.Response:
+                           headers: dict | None = None, *,
+                           timeout: float | None = None,
+                           max_retries: int | None = None) -> httpx.Response:
         """Raw GET returning the httpx.Response untouched — the caller maps
         status codes and error bodies itself (e.g. FRED, which puts its
         error_code JSON in a 200 body for quota/auth but a real 400 for a
         malformed api_key). Same pacing/retry discipline as get_json."""
         host = urlparse(url).netloc
+        retries = self._max_retries if max_retries is None else max_retries
         last: Exception | None = None
-        for attempt in range(self._max_retries + 1):
+        for attempt in range(retries + 1):
             await self._pace(host)
             try:
-                resp = await self._client.get(url, params=params, headers=headers)
+                kw = {"params": params, "headers": headers}
+                if timeout is not None:
+                    kw["timeout"] = timeout
+                resp = await self._client.get(url, **kw)
             except httpx.HTTPError as e:
                 last = UpstreamError(f"network error from {host}: {e}")
                 await asyncio.sleep(0.5 * (2 ** attempt))
@@ -75,13 +81,19 @@ class PoliteClient:
         raise last if last is not None else UpstreamError(f"request to {host} failed")
 
     async def get_json(self, url: str, params: dict | None = None,
-                       headers: dict | None = None) -> Any:
+                       headers: dict | None = None, *,
+                       timeout: float | None = None,
+                       max_retries: int | None = None) -> Any:
         host = urlparse(url).netloc
+        retries = self._max_retries if max_retries is None else max_retries
         last: Exception | None = None
-        for attempt in range(self._max_retries + 1):
+        for attempt in range(retries + 1):
             await self._pace(host)
             try:
-                resp = await self._client.get(url, params=params, headers=headers)
+                kw = {"params": params, "headers": headers}
+                if timeout is not None:
+                    kw["timeout"] = timeout
+                resp = await self._client.get(url, **kw)
             except httpx.HTTPError as e:
                 last = UpstreamError(f"network error from {host}: {e}")
                 await asyncio.sleep(0.5 * (2 ** attempt))
@@ -100,18 +112,24 @@ class PoliteClient:
         raise last if last is not None else UpstreamError(f"request to {host} failed")
 
     async def get_text(self, url: str, params: dict | None = None,
-                       headers: dict | None = None) -> str:
+                       headers: dict | None = None, *,
+                       timeout: float | None = None,
+                       max_retries: int | None = None) -> str:
         """Like get_json but returns the raw response body as text.
 
         For CSV/plain-text endpoints (e.g. Alpha Vantage EARNINGS_CALENDAR).
         Same pacing/retry/error discipline as get_json.
         """
         host = urlparse(url).netloc
+        retries = self._max_retries if max_retries is None else max_retries
         last: Exception | None = None
-        for attempt in range(self._max_retries + 1):
+        for attempt in range(retries + 1):
             await self._pace(host)
             try:
-                resp = await self._client.get(url, params=params, headers=headers)
+                kw = {"params": params, "headers": headers}
+                if timeout is not None:
+                    kw["timeout"] = timeout
+                resp = await self._client.get(url, **kw)
             except httpx.HTTPError as e:
                 last = UpstreamError(f"network error from {host}: {e}")
                 await asyncio.sleep(0.5 * (2 ** attempt))

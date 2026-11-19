@@ -2,7 +2,7 @@ import httpx
 import pytest
 import respx
 
-from unified_finance_mcp.errors import AuthError, RateLimited
+from unified_finance_mcp.errors import AuthError, RateLimited, UpstreamError
 from unified_finance_mcp.http import PoliteClient
 
 
@@ -132,3 +132,36 @@ async def test_post_form_retry_after_then_success():
                                  {"grant_type": "refresh_token",
                                   "refresh_token": "r"}) == {"access_token": "new"}
     assert route.call_count == 2
+
+
+@respx.mock
+async def test_retry_budget_override_caps_attempts(monkeypatch):
+    """A caller can bound a slow endpoint: two attempts instead of four."""
+    import unified_finance_mcp.http as http_mod
+
+    async def _no_sleep(_seconds):
+        return None
+
+    monkeypatch.setattr(http_mod.asyncio, "sleep", _no_sleep)
+    route = respx.get("https://x.test/slow")
+    route.side_effect = httpx.ConnectTimeout("boom")
+    async with PoliteClient(min_host_delay=0, max_retries=3) as c:
+        with pytest.raises(UpstreamError):
+            await c.get_text("https://x.test/slow", max_retries=1)
+    assert route.call_count == 2
+
+
+@respx.mock
+async def test_default_retry_budget_unchanged_without_override(monkeypatch):
+    import unified_finance_mcp.http as http_mod
+
+    async def _no_sleep(_seconds):
+        return None
+
+    monkeypatch.setattr(http_mod.asyncio, "sleep", _no_sleep)
+    route = respx.get("https://x.test/slow")
+    route.side_effect = httpx.ConnectTimeout("boom")
+    async with PoliteClient(min_host_delay=0, max_retries=3) as c:
+        with pytest.raises(UpstreamError):
+            await c.get_text("https://x.test/slow")
+    assert route.call_count == 4

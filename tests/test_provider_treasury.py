@@ -13,6 +13,7 @@ from unified_finance_mcp.config import (
     get_settings,
 )
 from unified_finance_mcp.errors import NotFound, UpstreamDrift, UpstreamError
+from unified_finance_mcp.http import PoliteClient
 from unified_finance_mcp.providers.treasury import (
     FISCAL_KINDS,
     TreasuryProvider,
@@ -328,3 +329,31 @@ async def test_mts_outlays_non_json_is_upstream_error(monkeypatch):
     p = make_provider(monkeypatch)
     with pytest.raises(UpstreamError, match="non-JSON"):
         await p.mts_outlays()
+
+
+async def test_yield_curve_scopes_timeout_and_retry(monkeypatch):
+    """Only the slow CSV request gets 45 s / one retry."""
+    seen = {}
+
+    async def fake_get_text(self, url, params=None, headers=None, **kw):
+        seen.update(kw)
+        return CURVE_CSV
+
+    monkeypatch.setattr(PoliteClient, "get_text", fake_get_text)
+    p = make_provider(monkeypatch)
+    await p.yield_curve("2026-11")
+    assert seen == {"timeout": 45.0, "max_retries": 1}
+
+
+async def test_fiscal_keeps_global_timeout_defaults(monkeypatch):
+    """Fiscal Data must not inherit the CSV's longer timeout/retry budget."""
+    seen = {}
+
+    async def fake_get_json(self, url, params=None, headers=None, **kw):
+        seen.update(kw)
+        return DEBT_BODY
+
+    monkeypatch.setattr(PoliteClient, "get_json", fake_get_json)
+    p = make_provider(monkeypatch)
+    await p.fiscal("debt_to_penny")
+    assert seen == {}

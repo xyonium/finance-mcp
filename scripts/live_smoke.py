@@ -133,8 +133,9 @@ async def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--only", default="",
                     help="comma-separated names or prefixes (e.g. edgar,treasury)")
     ap.add_argument("--verbose", action="store_true", help="print tracebacks")
-    ap.add_argument("--timeout", type=float, default=45.0,
-                    help="per-check timeout in seconds (default 45)")
+    ap.add_argument("--timeout", type=float, default=200.0,
+                    help="per-check timeout in seconds (default 200: covers "
+                         "the two-request MTS worst case and one curve retry)")
     args = ap.parse_args(argv)
     only = [s.strip() for s in args.only.split(",") if s.strip()]
     providers = build_providers(get_settings())
