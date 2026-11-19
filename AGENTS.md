@@ -35,6 +35,7 @@ live smoke 不进 CI：手工跑，且每个会话最多 1-2 次真实调用（�
 - `providers/<source>.py`：URL 构造、分页、字段归一化、错误映射。`tools/<domain>.py`：LLM-facing schema、参数校验、错误包装。
 - **两层边界**：provider 抛 `errors.py` 的分类异常；tool 用 `route_and_call` 包住，**永不抛异常**，失败返回 `{"error": ...}`（单源失败折叠进 `source_errors`）。`CancelledError` 不捕。
 - **错误分级**：`AuthError`（key/UA 配置）、`NotFound`（正常"无此数据"）、`RateLimited`/`UpstreamError`（可重试的连接/上游故障）、`UpstreamDrift`（**上游结构漂移**：解析成功但字段缺失/类型变了/CSV 头变化/分页行为变了；注意 200 + 非 JSON 仍算 `UpstreamError`，因为那多半是网关/维护页）。结构性异常一律用 `UpstreamDrift`——`route_and_call` 会给 error dict 附 `action="contact_admin"` + `hint`，要求模型转告用户联系管理员；不要把它降级成普通 `UpstreamError`，否则模型会以为重试就能好。
+- **库封装层的异常**（yfinance / tradingview_ta 等）只能落到 `ProviderError`：库不区分网络抖动与字段变化。只有**解析后的形状检查**（缺列、类型变了、非 frame 返回）才升级为 `UpstreamDrift`；kimi 目前没有解析边界，保持原样。
 - HTTP 一律走 `http.PoliteClient`：per-host 限速（`FINANCE_MCP_MIN_HOST_DELAY`，默认 0.5s）、429/503 重试 + `Retry-After`、401/403→`AuthError`、404→`NotFound`。需要自己读错误体时用 `get_response`/`get_text`。
 - **反幻觉**：只返回上游真实字段；缺失值保持 `None`/原样，不插值、不补全、不回填；日期保上游拼写。需要溯源的数据带上 `accn`/`filed`/`form`。
 - **不加载 `.env`**（无 dotenv 依赖）：key 只按需 `os.environ.get`；无 key 时 provider `available()` 为 False，auto 路由静默跳过；显式 `source=` 时返回"未配置"而不是假装空数据。

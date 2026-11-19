@@ -5,7 +5,7 @@ import anyio.to_thread
 import pandas as pd
 import yfinance as yf
 
-from ..errors import NotFound, ProviderError
+from ..errors import NotFound, ProviderError, UpstreamDrift
 from ..symbols import ParsedSymbol
 from .base import Provider
 
@@ -55,7 +55,7 @@ class YahooProvider(Provider):
         # yfinance names the index Date (daily) or Datetime (intraday); "index" if unnamed.
         date_col = next((c for c in ("date", "datetime", "index") if c in df.columns), None)
         if date_col is None:
-            raise ProviderError("yahoo: history frame has no date column")
+            raise UpstreamDrift("yahoo: history frame has no date column")
         df[date_col] = df[date_col].astype(str).str[:10]
         keep = [date_col, "open", "high", "low", "close", "volume"]
         out = df[[c for c in keep if c in df.columns]].rename(columns={date_col: "date"})

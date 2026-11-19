@@ -18,6 +18,10 @@ Nothing here is a yield curve substitute: `avg_interest_rates` is the
 *stock* of outstanding debt's average coupon, NOT a term structure. The
 tool names keep that distinction visible.
 
+Timeouts: the yield-curve CSV on home.treasury.gov has a ~19-20 s TTFB from
+some egresses, so this provider floors its client timeout at 45 s rather than
+the global 20 s default.
+
 Verified 2026-11-18: both CSV and JSON endpoints 200; `/v1/accounting/od/
 monthly_treasury_statement` is **404** — the correct MTS tables live under
 `/v1/accounting/mts/mts_table_N`. `mts_table_5` (outlays of the U.S.
@@ -40,6 +44,11 @@ from ..config import Settings
 from ..errors import NotFound, UpstreamDrift, UpstreamError
 from ..http import PoliteClient
 from .base import Provider
+
+# home.treasury.gov answers the yield-curve CSV with ~19-20 s TTFB from some
+# egresses (measured 3/3 from the London host), which races the 20 s default
+# request timeout and turns every call into timeout+retry. Floor it.
+_TREASURY_TIMEOUT_FLOOR = 45.0
 
 _PERIOD_RE = re.compile(r"^(\d{4})-(\d{2})$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -90,9 +99,11 @@ class TreasuryProvider(Provider):
 
     def _get_client(self) -> PoliteClient:
         if self._client is None:
-            self._client = PoliteClient(timeout=self.settings.request_timeout,
-                                        max_retries=self.settings.max_retries,
-                                        min_host_delay=self.settings.min_host_delay)
+            self._client = PoliteClient(
+                timeout=max(self.settings.request_timeout,
+                            _TREASURY_TIMEOUT_FLOOR),
+                max_retries=self.settings.max_retries,
+                min_host_delay=self.settings.min_host_delay)
         return self._client
 
     # ── par yield curve (CSV) ───────────────────────────────────────────────

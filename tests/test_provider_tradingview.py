@@ -212,3 +212,13 @@ def test_market_slug_map_covers_major_markets():
     assert set(MARKET_TO_TV_SCREENER) >= {
         "US", "HK", "CN", "EG", "JP", "UK", "CA", "AU", "DE", "FR",
         "KR", "TW", "IN", "SG", "MY", "TR"}
+
+
+async def test_screener_non_frame_result_is_drift(monkeypatch):
+    """The scanner tuple's second element changed type: schema drift."""
+    from unified_finance_mcp.errors import UpstreamDrift
+    q = patch_query(monkeypatch, FakeQuery())
+    q.captured["df"] = {"not": "a frame"}
+    p = make_provider()
+    with pytest.raises(UpstreamDrift, match="not a frame"):
+        await p.screener(market="US", limit=5)

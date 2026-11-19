@@ -10,7 +10,7 @@ import pytest
 import respx
 
 from unified_finance_mcp.config import DEFAULT_MARKETAUX_BASE_URL, get_settings
-from unified_finance_mcp.errors import AuthError, RateLimited, UpstreamError
+from unified_finance_mcp.errors import AuthError, RateLimited, UpstreamDrift, UpstreamError
 from unified_finance_mcp.providers.marketaux import MarketauxProvider
 from unified_finance_mcp.symbols import parse_symbol
 
@@ -121,13 +121,16 @@ async def test_news_server_error_is_upstream(monkeypatch):
 
 @respx.mock
 async def test_news_unexpected_body_is_upstream(monkeypatch):
+    # parsed-but-wrong shape is drift (admin escalation); non-JSON is the
+    # gateway/maintenance class and stays retryable UpstreamError.
     respx.get(BASE).respond(200, json={"data": "unexpected"})
     p = make_provider(monkeypatch)
-    with pytest.raises(UpstreamError):
+    with pytest.raises(UpstreamDrift):
         await p.news(None)
     respx.get(BASE).respond(200, text="not json")
-    with pytest.raises(UpstreamError):
+    with pytest.raises(UpstreamError) as ei:
         await p.news(None)
+    assert ei.value.kind == "unavailable"
 
 
 @respx.mock

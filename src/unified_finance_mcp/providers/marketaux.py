@@ -20,7 +20,7 @@ scrub the token out of any message that could carry an URL or upstream text
 from __future__ import annotations
 
 from ..config import DEFAULT_MARKETAUX_BASE_URL, Settings
-from ..errors import UpstreamError, scrub
+from ..errors import UpstreamDrift, UpstreamError, scrub
 from ..http import PoliteClient
 from ..symbols import ParsedSymbol
 from .base import Provider
@@ -75,7 +75,7 @@ class MarketauxProvider(Provider):
             raise UpstreamError(f"marketaux: non-JSON body from "
                                 f"{scrub(url, self._token)}") from e
         if not isinstance(data, dict):
-            raise UpstreamError("marketaux: unexpected "
+            raise UpstreamDrift("marketaux: unexpected "
                                 f"{type(data).__name__} body from {scrub(url, self._token)}")
         return data
 
@@ -91,7 +91,7 @@ class MarketauxProvider(Provider):
         data = await self._get(**params)
         rows = data.get("data")
         if not isinstance(rows, list):
-            raise UpstreamError("marketaux: unexpected "
+            raise UpstreamDrift("marketaux: unexpected "
                                 f"{type(rows).__name__} 'data' from "
                                 f"{scrub(f'{self._base}/v1/news/all', self._token)}")
         return [self._news_item(r) for r in rows[:limit]]

@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from unified_finance_mcp.config import get_settings
-from unified_finance_mcp.errors import NotFound
+from unified_finance_mcp.errors import NotFound, UpstreamDrift
 from unified_finance_mcp.providers.yahoo import YahooProvider
 from unified_finance_mcp.symbols import parse_symbol
 
@@ -448,3 +448,16 @@ async def test_earnings_history_limit_applied(monkeypatch):
     p = make_provider(monkeypatch, t)
     rows = await p.earnings_history(parse_symbol("AAPL"), limit=5)
     assert len(rows) == 5
+
+
+async def test_history_without_a_date_column_is_drift(monkeypatch):
+    """A parsed frame whose index resets to level_0/level_1 (MultiIndex) has
+    no date column: that is a schema change, not a transient upstream issue."""
+    import pandas as pd
+    t = MagicMock()
+    frame = pd.DataFrame({"Open": [1.0]},
+                         index=pd.MultiIndex.from_tuples([("2026-01-02", "x")]))
+    t.history.return_value = frame
+    p = make_provider(monkeypatch, t)
+    with pytest.raises(UpstreamDrift, match="no date column"):
+        await p.history(parse_symbol("AAPL"), interval="1d")

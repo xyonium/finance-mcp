@@ -5,7 +5,7 @@ import anyio
 from tradingview_screener import Column, Query
 from tradingview_ta import Interval, TA_Handler
 
-from ..errors import NotFound, ProviderError
+from ..errors import NotFound, ProviderError, UpstreamDrift
 from ..symbols import ParsedSymbol
 from .base import Provider
 
@@ -99,4 +99,7 @@ class TradingViewProvider(Provider):
             _, df = await anyio.to_thread.run_sync(_query)
         except Exception as e:
             raise ProviderError(f"tradingview screener: {e}") from e
+        if not hasattr(df, "to_dict") or not hasattr(df, "empty"):
+            raise UpstreamDrift("tradingview screener: scanner returned "
+                                f"{type(df).__name__}, not a frame")
         return df.to_dict("records")
